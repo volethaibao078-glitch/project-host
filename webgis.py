@@ -36,12 +36,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. KHỞI TẠO GEE (ĐÃ TỐI ƯU BẰNG CACHE)
+# 1. KHỞI TẠO GEE (ĐÃ TỐI ƯU ẨN SPINNER & TĂNG TỐC API)
 # ==========================================
-@st.cache_resource
+# Thêm show_spinner=False để tắt chữ "Running init_gee()..."
+@st.cache_resource(show_spinner=False)
 def init_gee():
     try:
-        ee.Initialize()
+        # Sử dụng High-volume endpoint để load bản đồ nhanh hơn
+        ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
     except Exception as e:
         pass
 
@@ -61,8 +63,8 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=0.6, show=Fals
 
 folium.Map.add_ee_layer = add_ee_layer
 
-# --- CÁC HÀM LẤY LAYER TỪ GEE ---
-@st.cache_data(ttl=3600)
+# --- CÁC HÀM LẤY LAYER TỪ GEE (ĐÃ TẮT SPINNER) ---
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_gee_water_url():
     try:
         dataset = ee.Image('JRC/GSW1_4/GlobalSurfaceWater')
@@ -72,7 +74,7 @@ def get_gee_water_url():
     except:
         return None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_ndwi_url(year, month):
     try:
         start_date = f'{int(year)}-{int(month):02d}-01'
@@ -88,7 +90,7 @@ def get_ndwi_url(year, month):
     except:
         return None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_water_balance_url(year, month):
     try:
         start_date = f'{int(year)}-{int(month):02d}-01'
@@ -101,7 +103,7 @@ def get_water_balance_url(year, month):
     except:
         return None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_drought_url(year, month):
     try:
         start_date = f'{int(year)}-{int(month):02d}-01'
@@ -113,7 +115,7 @@ def get_drought_url(year, month):
     except:
         return None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_water_quality_gee_url(year, month, wq_type="TSS"):
     try:
         start_date = f'{int(year)}-{int(month):02d}-01'
@@ -178,7 +180,7 @@ def get_lat_lon(tinh_name):
     
     return toa_do.get(s, [16.0, 106.0]) 
 
-@st.cache_data 
+@st.cache_data(show_spinner=False)
 def load_data():
     try:
         df_all = pd.read_csv('BaoCao_ToanQuoc_2020_2024.csv')
