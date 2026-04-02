@@ -15,31 +15,38 @@ import numpy as np
 # ==========================================
 st.set_page_config(page_title="WebGIS Diện Tích Nước", layout="wide", initial_sidebar_state="collapsed")
 
+# Thiết lập Chiều cao cố định cho 3 cột (tùy chỉnh theo màn hình)
+UI_HEIGHT = 800
+
 st.markdown("""
     <style>
+        /* Khóa thanh cuộn chính của toàn trang web */
+        .stApp {
+            overflow: hidden !important;
+        }
+        
+        /* Xóa padding thừa để mở rộng tối đa không gian */
         .block-container {
-            padding-top: 0rem !important;
+            padding-top: 1rem !important;
             padding-bottom: 0rem !important;
-            padding-left: 0rem !important;
-            padding-right: 0rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
             max-width: 100% !important;
         }
         header {visibility: hidden;}
         footer {visibility: hidden;}
         
-        div[data-testid="column"]:nth-child(1), 
-        div[data-testid="column"]:nth-child(3) {
-            height: 100vh;
-            overflow-y: auto;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-right: 1px solid #e0e0e0;
-            border-left: 1px solid #e0e0e0;
+        /* Tùy chỉnh lại thanh cuộn của 2 bên cho thanh mảnh và đẹp hơn */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
         }
-        div[data-testid="column"]:nth-child(2) {
-            height: 100vh;
-            overflow: hidden;
-            padding: 0px !important;
+        ::-webkit-scrollbar-thumb {
+            background: #b0b0b0; 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #888; 
         }
     </style>
 """, unsafe_allow_html=True)
@@ -212,71 +219,74 @@ col_left, col_map, col_right = st.columns([1.8, 6.4, 1.8], gap="small")
 
 # ----------------- CỘT TRÁI (BẢNG ĐIỀU KHIỂN & SO SÁNH) -----------------
 with col_left:
-    st.markdown("### ⚙️ Điều Khiển")
-    st.markdown("---")
-    
-    st.markdown("**1. Khu vực quan tâm**")
-    tinh_so_sanh = st.selectbox("Chọn khu vực", ["Toàn Quốc"] + sorted(df['Tinh'].unique().tolist()), key='khuvuc')
-    
-    st.markdown("<br>**2. Cài đặt thời gian phân tích**", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    
-    # Lấy danh sách Năm và Tháng hợp lệ từ file dữ liệu
-    all_years = sorted(df['Nam'].unique())
-    all_months = sorted(df['Thang'].unique())
+    # Bọc nội dung cột trái vào một vùng cuộn độc lập
+    with st.container(height=UI_HEIGHT, border=False):
+        st.markdown("### ⚙️ Điều Khiển")
+        st.markdown("---")
+        
+        st.markdown("**1. Khu vực quan tâm**")
+        tinh_so_sanh = st.selectbox("Chọn khu vực", ["Toàn Quốc"] + sorted(df['Tinh'].unique().tolist()), key='khuvuc')
+        
+        st.markdown("<br>**2. Cài đặt thời gian phân tích**", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        
+        # Lấy danh sách Năm và Tháng hợp lệ từ file dữ liệu
+        all_years = sorted(df['Nam'].unique())
+        all_months = sorted(df['Thang'].unique())
 
-    with c1:
-        st.write("**Thời điểm 1**")
-        nam_1 = st.selectbox("Năm", all_years, key='nam1')
-        thang_1 = st.selectbox("Tháng", all_months, key='thang1')
-        
-    with c2:
-        st.write("**Thời điểm 2**")
-        # ĐẢM BẢO THỜI ĐIỂM 2 LUÔN >= THỜI ĐIỂM 1
-        valid_years_2 = [y for y in all_years if y >= nam_1]
-        nam_2 = st.selectbox("Năm", valid_years_2, key='nam2')
-        
-        # Nếu cùng 1 năm, Tháng 2 bắt buộc phải sau Tháng 1
-        if nam_2 == nam_1:
-            valid_months_2 = [m for m in all_months if m > thang_1]
-            # Nếu Tháng 1 đã là tháng 12, báo lỗi nhẹ hoặc set cứng bằng nhau
-            if not valid_months_2:
-                valid_months_2 = [thang_1] 
-        else:
-            valid_months_2 = all_months
+        with c1:
+            st.write("**Thời điểm 1**")
+            nam_1 = st.selectbox("Năm", all_years, key='nam1')
+            thang_1 = st.selectbox("Tháng", all_months, key='thang1')
             
-        thang_2 = st.selectbox("Tháng", valid_months_2, key='thang2')
+        with c2:
+            st.write("**Thời điểm 2**")
+            # ĐẢM BẢO THỜI ĐIỂM 2 LUÔN >= THỜI ĐIỂM 1
+            valid_years_2 = [y for y in all_years if y >= nam_1]
+            nam_2 = st.selectbox("Năm", valid_years_2, key='nam2')
+            
+            # Nếu cùng 1 năm, Tháng 2 bắt buộc phải sau Tháng 1
+            if nam_2 == nam_1:
+                valid_months_2 = [m for m in all_months if m > thang_1]
+                # Nếu Tháng 1 đã là tháng 12, báo lỗi nhẹ hoặc set cứng bằng nhau
+                if not valid_months_2:
+                    valid_months_2 = [thang_1] 
+            else:
+                valid_months_2 = all_months
+                
+            thang_2 = st.selectbox("Tháng", valid_months_2, key='thang2')
 
-    nam_qk, thang_qk = nam_1, thang_1
-    nam_tl, thang_tl = nam_2, thang_2
+        nam_qk, thang_qk = nam_1, thang_1
+        nam_tl, thang_tl = nam_2, thang_2
 
-    start_date = pd.to_datetime(f"{int(nam_qk)}-{int(thang_qk):02d}-01")
-    end_date = pd.to_datetime(f"{int(nam_tl)}-{int(thang_tl):02d}-01")
+        start_date = pd.to_datetime(f"{int(nam_qk)}-{int(thang_qk):02d}-01")
+        end_date = pd.to_datetime(f"{int(nam_tl)}-{int(thang_tl):02d}-01")
 
-    # Kiểm tra xem có chọn trùng tháng hay không
-    if start_date == end_date:
-        st.warning("⚠️ Thời điểm 2 cần lớn hơn Thời điểm 1 để phân tích biến động hợp lệ.")
-    else:
-        st.success(f"📌 Đang so sánh:\nTừ: T{int(thang_qk)}/{int(nam_qk)} ➡️ Đến: T{int(thang_tl)}/{int(nam_tl)}")
+        # Kiểm tra xem có chọn trùng tháng hay không
+        if start_date == end_date:
+            st.warning("⚠️ Thời điểm 2 cần lớn hơn Thời điểm 1 để phân tích biến động hợp lệ.")
+        else:
+            st.success(f"📌 Đang so sánh:\nTừ: T{int(thang_qk)}/{int(nam_qk)} ➡️ Đến: T{int(thang_tl)}/{int(nam_tl)}")
 
-    st.markdown("<br>**3. Lớp Dữ Liệu & Bản Đồ**", unsafe_allow_html=True)
-    layer_type = st.radio("Chọn tính năng hiển thị trực quan:", [
-        "1. Biến động diện tích (Chấm tròn tăng/giảm)",
-        "2. Cân bằng nước (Marker tỷ lệ % thay đổi)",
-        "3. Đánh giá Hạn hán (Cảnh báo đỏ >10%)",
-        "4. Mô hình hóa Chất lượng nước (Lấy từ CSV)",
-        "5. Phân tích Xu hướng (Bản đồ Trend Mann-Kendall)"
-    ])
-    
-    wq_choice = "TSS"
-    if "4. " in layer_type:
-        wq_choice = st.selectbox("🔬 Chọn tham số Chất lượng nước:", [
-            "Độ đục & TSS (NDTI)", 
-            "Tảo nở hoa (Chlorophyll-a)"
+        st.markdown("<br>**3. Lớp Dữ Liệu & Bản Đồ**", unsafe_allow_html=True)
+        layer_type = st.radio("Chọn tính năng hiển thị trực quan:", [
+            "1. Biến động diện tích (Chấm tròn tăng/giảm)",
+            "2. Cân bằng nước (Marker tỷ lệ % thay đổi)",
+            "3. Đánh giá Hạn hán (Cảnh báo đỏ >10%)",
+            "4. Mô hình hóa Chất lượng nước (Lấy từ CSV)",
+            "5. Phân tích Xu hướng (Bản đồ Trend Mann-Kendall)"
         ])
+        
+        wq_choice = "TSS"
+        if "4. " in layer_type:
+            wq_choice = st.selectbox("🔬 Chọn tham số Chất lượng nước:", [
+                "Độ đục & TSS (NDTI)", 
+                "Tảo nở hoa (Chlorophyll-a)"
+            ])
 
 # ----------------- CỘT GIỮA (BẢN ĐỒ FULL TRUNG TÂM) -----------------
 with col_map:
+    # KHÔNG bọc bản đồ vào container để nó full không gian của cột
     df_qk = df[(df['Nam'] == nam_qk) & (df['Thang'] == thang_qk)].groupby('Tinh').agg({
         'Dien_Tich_Nuoc_km2': 'sum'
     }).reset_index()
@@ -531,111 +541,114 @@ with col_map:
 
     folium.LayerControl().add_to(m)
 
-    st_folium(m, use_container_width=True, height=1000, returned_objects=[])
+    # Quan trọng: Gắn chiều cao bản đồ BẰNG với chiều cao UI_HEIGHT đã định sẵn
+    st_folium(m, use_container_width=True, height=UI_HEIGHT, returned_objects=[])
 
 # ----------------- CỘT PHẢI (THỐNG KÊ & BIỂU ĐỒ) -----------------
 with col_right:
-    st.markdown("### 📊 Thống Kê Database")
-    st.caption("Trình xuất biểu đồ phân tích dữ liệu toàn quốc.")
-    st.markdown("---")
-    
-    tinh_chart = st.selectbox("Chọn Tỉnh vẽ biểu đồ", sorted(df['Tinh'].unique()))
-    
-    chu_de_chart = st.selectbox("Chọn Chủ đề biểu đồ:", [
-        "1. Biến động diện tích",
-        "2. Cân bằng nước",
-        "3. Đánh giá Hạn hán",
-        "4. Mô hình hóa Chất lượng nước",
-        "5. Phân tích Xu hướng"
-    ])
-    
-    loai_chart = st.selectbox("Chọn Loại biểu đồ:", ["Cột (Bar)", "Đường (Line)", "Tròn (Pie)"])
-    
-    df_prov = df[df['Tinh'] == tinh_chart].sort_values(by='Date').copy()
-    df_prov['ChenhLech_km2'] = df_prov['Dien_Tich_Nuoc_km2'].diff()
-    df_prov['TyLe_PhanTram'] = df_prov['Dien_Tich_Nuoc_km2'].pct_change() * 100
-    
-    if "5." not in chu_de_chart:
-        nam_chart = st.selectbox("Chọn Năm:", sorted(df['Nam'].unique(), reverse=True), key='nam_chart')
-        df_plot = df_prov[df_prov['Nam'] == nam_chart].copy()
-        df_plot['Thang'] = df_plot['Thang'].astype(int)
-        df_plot['ThoiGian'] = "Tháng " + df_plot['Thang'].astype(str)
-    else:
-        st.caption(f"Đang hiển thị biểu đồ từ {int(thang_qk)}/{int(nam_qk)} đến {int(thang_tl)}/{int(nam_tl)}")
-        mask_chart_time = (df_prov['Date'] >= start_date) & (df_prov['Date'] <= end_date)
-        df_plot = df_prov[mask_chart_time].copy()
-        df_plot['Thang'] = df_plot['Thang'].astype(int)
-        df_plot['Nam'] = df_plot['Nam'].astype(int)
-        df_plot['ThoiGian'] = df_plot['Thang'].astype(str) + '/' + df_plot['Nam'].astype(str)
+    # Bọc nội dung cột phải vào một vùng cuộn độc lập
+    with st.container(height=UI_HEIGHT, border=False):
+        st.markdown("### 📊 Thống Kê Database")
+        st.caption("Trình xuất biểu đồ phân tích dữ liệu toàn quốc.")
+        st.markdown("---")
         
-    if "1." in chu_de_chart or "5." in chu_de_chart:
-        y_col = 'Dien_Tich_Nuoc_km2'
-        title = f"Diện tích mặt nước (km²)"
-        color_seq = ['#87CEFA']
-    elif "2." in chu_de_chart:
-        y_col = 'ChenhLech_km2'
-        title = f"Cân bằng nước (Biến động km² so với tháng trước)"
-        color_seq = ['#32CD32']
-    elif "3." in chu_de_chart:
-        y_col = 'TyLe_PhanTram'
-        title = f"Đánh giá Hạn hán (% Thay đổi so với tháng trước)"
-        color_seq = ['#FF4500']
-    elif "4." in chu_de_chart:
-        y_col = ['NDTI_DoDuc', 'Algae_Tao']
-        title = f"Chất lượng Nước (Độ đục NDTI & Tảo Chlorophyll)"
-        color_seq = ['#D2691E', '#2E8B57']
+        tinh_chart = st.selectbox("Chọn Tỉnh vẽ biểu đồ", sorted(df['Tinh'].unique()))
+        
+        chu_de_chart = st.selectbox("Chọn Chủ đề biểu đồ:", [
+            "1. Biến động diện tích",
+            "2. Cân bằng nước",
+            "3. Đánh giá Hạn hán",
+            "4. Mô hình hóa Chất lượng nước",
+            "5. Phân tích Xu hướng"
+        ])
+        
+        loai_chart = st.selectbox("Chọn Loại biểu đồ:", ["Cột (Bar)", "Đường (Line)", "Tròn (Pie)"])
+        
+        df_prov = df[df['Tinh'] == tinh_chart].sort_values(by='Date').copy()
+        df_prov['ChenhLech_km2'] = df_prov['Dien_Tich_Nuoc_km2'].diff()
+        df_prov['TyLe_PhanTram'] = df_prov['Dien_Tich_Nuoc_km2'].pct_change() * 100
+        
+        if "5." not in chu_de_chart:
+            nam_chart = st.selectbox("Chọn Năm:", sorted(df['Nam'].unique(), reverse=True), key='nam_chart')
+            df_plot = df_prov[df_prov['Nam'] == nam_chart].copy()
+            df_plot['Thang'] = df_plot['Thang'].astype(int)
+            df_plot['ThoiGian'] = "Tháng " + df_plot['Thang'].astype(str)
+        else:
+            st.caption(f"Đang hiển thị biểu đồ từ {int(thang_qk)}/{int(nam_qk)} đến {int(thang_tl)}/{int(nam_tl)}")
+            mask_chart_time = (df_prov['Date'] >= start_date) & (df_prov['Date'] <= end_date)
+            df_plot = df_prov[mask_chart_time].copy()
+            df_plot['Thang'] = df_plot['Thang'].astype(int)
+            df_plot['Nam'] = df_plot['Nam'].astype(int)
+            df_plot['ThoiGian'] = df_plot['Thang'].astype(str) + '/' + df_plot['Nam'].astype(str)
+            
+        if "1." in chu_de_chart or "5." in chu_de_chart:
+            y_col = 'Dien_Tich_Nuoc_km2'
+            title = f"Diện tích mặt nước (km²)"
+            color_seq = ['#87CEFA']
+        elif "2." in chu_de_chart:
+            y_col = 'ChenhLech_km2'
+            title = f"Cân bằng nước (Biến động km² so với tháng trước)"
+            color_seq = ['#32CD32']
+        elif "3." in chu_de_chart:
+            y_col = 'TyLe_PhanTram'
+            title = f"Đánh giá Hạn hán (% Thay đổi so với tháng trước)"
+            color_seq = ['#FF4500']
+        elif "4." in chu_de_chart:
+            y_col = ['NDTI_DoDuc', 'Algae_Tao']
+            title = f"Chất lượng Nước (Độ đục NDTI & Tảo Chlorophyll)"
+            color_seq = ['#D2691E', '#2E8B57']
 
-    # BỐ CỤC LEGEND DƯỚI CÙNG (TRÁNH BỊ CHE)
-    legend_layout = dict(orientation="h", yanchor="top", y=-0.7, xanchor="center", x=0.5)
+        # BỐ CỤC LEGEND DƯỚI CÙNG (TRÁNH BỊ CHE)
+        legend_layout = dict(orientation="h", yanchor="top", y=-0.7, xanchor="center", x=0.5)
 
-    if not df_plot.empty:
-        if loai_chart == "Tròn (Pie)":
-            if isinstance(y_col, list):
-                st.warning("⚠️ Biểu đồ Tròn không hỗ trợ hiển thị 2 chỉ số Chất lượng nước cùng lúc. Vui lòng chọn Cột hoặc Đường.")
-            elif df_plot[y_col].min() < 0:
-                st.warning(f"⚠️ Dữ liệu của chủ đề '{chu_de_chart[3:]}' chứa giá trị âm (ví dụ: nước bị thâm hụt/giảm), không thể vẽ biểu đồ Tròn theo tỷ lệ học. Vui lòng chọn Cột hoặc Đường.")
-            else:
-                fig = px.pie(df_plot, names='ThoiGian', values=y_col, hole=0.3, title=title)
-                fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300)
-                fig.update_traces(textposition='inside', textinfo='percent+label')
+        if not df_plot.empty:
+            if loai_chart == "Tròn (Pie)":
+                if isinstance(y_col, list):
+                    st.warning("⚠️ Biểu đồ Tròn không hỗ trợ hiển thị 2 chỉ số Chất lượng nước cùng lúc. Vui lòng chọn Cột hoặc Đường.")
+                elif df_plot[y_col].min() < 0:
+                    st.warning(f"⚠️ Dữ liệu của chủ đề '{chu_de_chart[3:]}' chứa giá trị âm (ví dụ: nước bị thâm hụt/giảm), không thể vẽ biểu đồ Tròn theo tỷ lệ học. Vui lòng chọn Cột hoặc Đường.")
+                else:
+                    fig = px.pie(df_plot, names='ThoiGian', values=y_col, hole=0.3, title=title)
+                    fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300)
+                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+            elif loai_chart == "Cột (Bar)":
+                if isinstance(y_col, list):
+                    fig = px.bar(df_plot, x='ThoiGian', y=y_col, title=title, barmode='group', color_discrete_sequence=color_seq)
+                else:
+                    fig = px.bar(df_plot, x='ThoiGian', y=y_col, title=title, color_discrete_sequence=color_seq)
+                fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300, legend=legend_layout, legend_title_text='')
                 st.plotly_chart(fig, use_container_width=True)
                 
-        elif loai_chart == "Cột (Bar)":
-            if isinstance(y_col, list):
-                fig = px.bar(df_plot, x='ThoiGian', y=y_col, title=title, barmode='group', color_discrete_sequence=color_seq)
-            else:
-                fig = px.bar(df_plot, x='ThoiGian', y=y_col, title=title, color_discrete_sequence=color_seq)
-            fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300, legend=legend_layout, legend_title_text='')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        elif loai_chart == "Đường (Line)":
-            fig = px.line(df_plot, x='ThoiGian', y=y_col, markers=True, title=title, color_discrete_sequence=color_seq)
-            fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300, legend=legend_layout, legend_title_text='')
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Không có dữ liệu để vẽ biểu đồ.")
-
-    if "5." in chu_de_chart:
-        st.markdown("---")
-        st.markdown("**Kết quả thuật toán Mann-Kendall**")
-        if len(df_plot) > 3:
-            data_series = df_plot['Dien_Tich_Nuoc_km2'].values
-            try:
-                mk_result = mk.original_test(data_series)
-                trend_val = mk_result.trend
-                p_val = mk_result.p
-            except:
-                trend_val = 'no trend'
-                p_val = None
-            
-            trend_trans = {
-                'increasing': 'Đang Tăng 📈',
-                'decreasing': 'Đang Giảm 📉',
-                'no trend': 'Không rõ ràng ➖'
-            }
-            
-            st.info(f"**Xu hướng:** {trend_trans.get(trend_val, trend_val)}")
-            if p_val is not None:
-                st.caption(f"Độ tin cậy (p-value): {p_val:.4f}")
+            elif loai_chart == "Đường (Line)":
+                fig = px.line(df_plot, x='ThoiGian', y=y_col, markers=True, title=title, color_discrete_sequence=color_seq)
+                fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300, legend=legend_layout, legend_title_text='')
+                st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("Khoảng thời gian bạn chọn quá ngắn (<4 tháng) để phân tích Mann-Kendall.")
+            st.warning("Không có dữ liệu để vẽ biểu đồ.")
+
+        if "5." in chu_de_chart:
+            st.markdown("---")
+            st.markdown("**Kết quả thuật toán Mann-Kendall**")
+            if len(df_plot) > 3:
+                data_series = df_plot['Dien_Tich_Nuoc_km2'].values
+                try:
+                    mk_result = mk.original_test(data_series)
+                    trend_val = mk_result.trend
+                    p_val = mk_result.p
+                except:
+                    trend_val = 'no trend'
+                    p_val = None
+                
+                trend_trans = {
+                    'increasing': 'Đang Tăng 📈',
+                    'decreasing': 'Đang Giảm 📉',
+                    'no trend': 'Không rõ ràng ➖'
+                }
+                
+                st.info(f"**Xu hướng:** {trend_trans.get(trend_val, trend_val)}")
+                if p_val is not None:
+                    st.caption(f"Độ tin cậy (p-value): {p_val:.4f}")
+            else:
+                st.warning("Khoảng thời gian bạn chọn quá ngắn (<4 tháng) để phân tích Mann-Kendall.")
