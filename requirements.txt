@@ -1,11 +1,9 @@
 streamlit
 pandas
-pymannkendall
+plotly
 folium
 streamlit-folium
-matplotlib
-scipy
-geemap
 earthengine-api
-plotly
-openpyxl
+pymannkendall
+numpy
+branca
