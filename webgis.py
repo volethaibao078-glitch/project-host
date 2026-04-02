@@ -32,22 +32,35 @@ st.markdown("""
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #888; }
+        
+        /* Ép nhỏ toàn bộ chữ trong các thẻ metric để chống bị cắt chữ (...) */
+        [data-testid="stMetricValue"] { 
+            font-size: 1.1rem !important; 
+            font-weight: bold !important;
+        }
+        [data-testid="stMetricLabel"] * { 
+            font-size: 0.85rem !important; 
+        }
+        [data-testid="stMetricDelta"] * { 
+            font-size: 0.85rem !important; 
+        }
+        /* Loại bỏ khoảng trắng thừa giữa các cột metric */
+        [data-testid="column"] {
+            min-width: 0 !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. KHỞI TẠO GEE (ĐÃ TỐI ƯU ẨN SPINNER & TĂNG TỐC API)
+# 1. KHỞI TẠO GEE
 # ==========================================
-# Thêm show_spinner=False để tắt chữ "Running init_gee()..."
 @st.cache_resource(show_spinner=False)
 def init_gee():
     try:
-        # Sử dụng High-volume endpoint để load bản đồ nhanh hơn
         ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
     except Exception as e:
         pass
 
-# Gọi hàm khởi tạo
 init_gee()
 
 def add_ee_layer(self, ee_image_object, vis_params, name, opacity=0.6, show=False):
@@ -63,7 +76,7 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=0.6, show=Fals
 
 folium.Map.add_ee_layer = add_ee_layer
 
-# --- CÁC HÀM LẤY LAYER TỪ GEE (ĐÃ TẮT SPINNER) ---
+# --- CÁC HÀM LẤY LAYER TỪ GEE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_gee_water_url():
     try:
@@ -79,9 +92,7 @@ def get_ndwi_url(year, month):
     try:
         start_date = f'{int(year)}-{int(month):02d}-01'
         end_date = f'{int(year)}-{int(month):02d}-28'
-        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")\
-            .filterDate(start_date, end_date)\
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterDate(start_date, end_date).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
         image = collection.median()
         ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
         water_mask = ndwi.updateMask(ndwi.gte(0)) 
@@ -122,7 +133,6 @@ def get_water_quality_gee_url(year, month, wq_type="TSS"):
         end_date = f'{int(year)}-{int(month):02d}-28'
         collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterDate(start_date, end_date).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
         image = collection.median()
-        
         ndwi = image.normalizedDifference(['B3', 'B8'])
         water_mask = ndwi.gte(0)
 
@@ -170,14 +180,6 @@ def get_lat_lon(tinh_name):
     s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
     
     if 'ho chi minh' in s: return [10.8231, 106.6297]
-    if 'ba ria' in s: return [10.4973, 107.1683]
-    if 'thua thien' in s: return [16.4637, 107.5905]
-    if 'hai phong' in s: return [20.8449, 106.6881]
-    if 'da nang' in s: return [16.0678, 108.2208]
-    if 'can tho' in s: return [10.0452, 105.7469]
-    if 'ha noi' in s: return [21.0285, 105.8542]
-    if 'ha tay' in s: return [20.9100, 105.7300]
-    
     return toa_do.get(s, [16.0, 106.0]) 
 
 @st.cache_data(show_spinner=False)
@@ -203,97 +205,163 @@ df = load_data()
 # ==========================================
 col_left, col_map, col_right = st.columns([1.8, 6.4, 1.8], gap="small")
 
-# ----------------- CỘT TRÁI (BẢNG ĐIỀU KHIỂN & SO SÁNH) -----------------
+# ----------------- CỘT TRÁI (BẢNG ĐIỀU KHIỂN & BẢN TIN) -----------------
 with col_left:
     with st.container(height=UI_HEIGHT, border=False):
         st.markdown("### ⚙️ Điều Khiển")
         st.markdown("---")
         
+        # 1. CHỌN KHU VỰC
         st.markdown("**1. Khu vực quan tâm**")
-        tinh_so_sanh = st.selectbox("Chọn khu vực", ["Toàn Quốc"] + sorted(df['Tinh'].unique().tolist()), key='khuvuc')
+        tinh_so_sanh = st.selectbox("Chọn khu vực", ["Toàn Quốc"] + sorted(df['Tinh'].unique().tolist()), key='khuvuc', label_visibility="collapsed")
         
-        st.markdown("<br>**2. Cài đặt thời gian phân tích**", unsafe_allow_html=True)
+        # 2. CHỌN THỜI GIAN
+        st.markdown("**2. Cài đặt thời gian**")
         c1, c2 = st.columns(2)
-        
         all_years = sorted(df['Nam'].unique())
         all_months = sorted(df['Thang'].unique())
 
         with c1:
-            st.write("**Thời điểm 1**")
-            nam_1 = st.selectbox("Năm", all_years, key='nam1')
+            nam_1 = st.selectbox("Năm (Kỳ 1)", all_years, key='nam1')
             thang_1 = st.selectbox("Tháng", all_months, key='thang1')
-            
         with c2:
-            st.write("**Thời điểm 2**")
             valid_years_2 = [y for y in all_years if y >= nam_1]
-            nam_2 = st.selectbox("Năm", valid_years_2, key='nam2')
-            
-            if nam_2 == nam_1:
-                valid_months_2 = [m for m in all_months if m > thang_1]
-                if not valid_months_2:
-                    valid_months_2 = [thang_1] 
-            else:
-                valid_months_2 = all_months
-                
+            nam_2 = st.selectbox("Năm (Kỳ 2)", valid_years_2, key='nam2')
+            valid_months_2 = [m for m in all_months if m > thang_1] if nam_2 == nam_1 else all_months
+            if not valid_months_2: valid_months_2 = [thang_1] 
             thang_2 = st.selectbox("Tháng", valid_months_2, key='thang2')
 
         nam_qk, thang_qk = nam_1, thang_1
         nam_tl, thang_tl = nam_2, thang_2
-
         start_date = pd.to_datetime(f"{int(nam_qk)}-{int(thang_qk):02d}-01")
         end_date = pd.to_datetime(f"{int(nam_tl)}-{int(thang_tl):02d}-01")
 
-        if start_date == end_date:
-            st.warning("⚠️ Thời điểm 2 cần lớn hơn Thời điểm 1 để phân tích biến động hợp lệ.")
-        else:
-            st.success(f"📌 Đang so sánh:\nTừ: T{int(thang_qk)}/{int(nam_qk)} ➡️ Đến: T{int(thang_tl)}/{int(nam_tl)}")
-
-        st.markdown("<br>**3. Lớp Dữ Liệu & Bản Đồ**", unsafe_allow_html=True)
-        layer_type = st.radio("Chọn tính năng hiển thị trực quan:", [
-            "1. Biến động diện tích (Chấm tròn tăng/giảm)",
-            "2. Cân bằng nước (Marker tỷ lệ % thay đổi)",
-            "3. Đánh giá Hạn hán (Cảnh báo đỏ >10%)",
-            "4. Mô hình hóa Chất lượng nước (Lấy từ CSV)"
-        ])
+        # 3. CHỌN CHỦ ĐỀ (ĐƯA LÊN TRÊN BẢN TIN)
+        st.markdown("<br>**3. Chủ đề hiển thị**", unsafe_allow_html=True)
+        layer_type = st.radio("Chọn lớp dữ liệu:", [
+            "1. Biến động diện tích",
+            "2. Cân bằng nước",
+            "3. Đánh giá Hạn hán",
+            "4. Mô hình hóa Chất lượng nước"
+        ], label_visibility="collapsed")
         
         wq_choice = "TSS"
         if "4. " in layer_type:
-            wq_choice = st.selectbox("🔬 Chọn tham số Chất lượng nước:", [
-                "Độ đục & TSS (NDTI)", 
-                "Tảo nở hoa (Chlorophyll-a)"
-            ])
+            wq_choice = st.selectbox("Tham số Chất lượng nước:", ["Độ đục & TSS (NDTI)", "Tảo nở hoa (Chlorophyll-a)"])
+
+        # --- TÍNH TOÁN DỮ LIỆU ---
+        df_qk = df[(df['Nam'] == nam_qk) & (df['Thang'] == thang_qk)].groupby('Tinh').agg({'Dien_Tich_Nuoc_km2': 'sum'}).reset_index()
+        df_tl = df[(df['Nam'] == nam_tl) & (df['Thang'] == thang_tl)].groupby('Tinh').agg({
+            'Dien_Tich_Nuoc_km2': 'sum', 'NDTI_DoDuc': 'mean', 'Algae_Tao': 'mean'
+        }).reset_index()
+        
+        df_map = pd.merge(df_tl, df_qk, on='Tinh', suffixes=('_tl', '_qk'), how='outer')
+        df_map['Dien_Tich_Nuoc_km2_tl'] = df_map['Dien_Tich_Nuoc_km2_tl'].fillna(0)
+        df_map['Dien_Tich_Nuoc_km2_qk'] = df_map['Dien_Tich_Nuoc_km2_qk'].fillna(0)
+        
+        df_map['ChenhLech'] = df_map['Dien_Tich_Nuoc_km2_tl'] - df_map['Dien_Tich_Nuoc_km2_qk']
+        df_map['TyLe_PhanTram'] = np.where(df_map['Dien_Tich_Nuoc_km2_qk'] > 0, 
+                                          (df_map['ChenhLech'] / df_map['Dien_Tich_Nuoc_km2_qk']) * 100, 0)
+        df_map['Lat'] = df_map['Tinh'].apply(lambda x: get_lat_lon(x)[0])
+        df_map['Lon'] = df_map['Tinh'].apply(lambda x: get_lat_lon(x)[1])
+
+        if tinh_so_sanh != "Toàn Quốc":
+            df_map_draw = df_map[df_map['Tinh'] == tinh_so_sanh].copy()
+            map_center, map_zoom = get_lat_lon(tinh_so_sanh), 9 
+        else:
+            df_map_draw, map_center, map_zoom = df_map.copy(), [16.0, 106.0], 5.5
+
+        # ==========================================
+        # 4. BẢN TIN SỐ LIỆU ĐỘNG (DYNAMIC DASHBOARD)
+        # ==========================================
+        st.markdown("<br>**4. 📰 Bản Tin Số Liệu**", unsafe_allow_html=True)
+        
+        if start_date == end_date:
+            st.warning("⚠️ Trùng thời gian, không có biến động.")
+        else:
+            with st.container(border=True):
+                # ============ CHẾ ĐỘ 1: TOÀN QUỐC ============
+                if tinh_so_sanh == "Toàn Quốc":
+                    st.markdown("<p style='text-align:center; font-weight:bold; color:#1f77b4; margin-bottom:5px;'>🇻🇳 TỔNG HỢP TOÀN QUỐC</p>", unsafe_allow_html=True)
+                    
+                    if "1." in layer_type or "2." in layer_type:
+                        # Bản tin Biến động & Cân bằng nước
+                        tong_qk = df_map['Dien_Tich_Nuoc_km2_qk'].sum()
+                        tong_tl = df_map['Dien_Tich_Nuoc_km2_tl'].sum()
+                        
+                        st.caption(f"Kỳ: T{thang_qk}/{nam_qk} ➔ T{thang_tl}/{nam_tl}")
+                        c3, c4 = st.columns(2)
+                        c3.metric(label="DT Hiện tại", value=f"{tong_tl:,.0f} km²")
+                        c4.metric(label="Biến động", value=f"{tong_tl - tong_qk:,.0f} km²", delta=f"{tong_tl - tong_qk:,.0f} km²")
+                        
+                        tinh_tang, tinh_giam = (df_map['ChenhLech'] > 0).sum(), (df_map['ChenhLech'] < 0).sum()
+                        st.markdown(f"<p style='font-size:13px; margin-top:5px;'>🟢 <b>{tinh_tang}</b> tỉnh tăng<br>🔴 <b>{tinh_giam}</b> tỉnh giảm</p>", unsafe_allow_html=True)
+
+                    elif "3." in layer_type:
+                        # Bản tin Hạn hán
+                        han_han = df_map[df_map['TyLe_PhanTram'] <= -10]
+                        st.caption(f"Mức cảnh báo: Giảm sút > 10%")
+                        st.metric(label="Số tỉnh cảnh báo Đỏ", value=f"{len(han_han)} tỉnh", delta="- Nguy cơ hạn hán", delta_color="inverse")
+                        if len(han_han) > 0:
+                            st.markdown(f"<p style='font-size:12px;'><b>Gồm:</b> {', '.join(han_han['Tinh'].tolist()[:8])}...</p>", unsafe_allow_html=True)
+                        else:
+                            st.success("Không có tỉnh mức cảnh báo.")
+
+                    elif "4." in layer_type:
+                        # Bản tin Chất lượng nước
+                        st.caption("Trung bình toàn quốc")
+                        c3, c4 = st.columns(2)
+                        avg_ndti = df_map['NDTI_DoDuc'].mean()
+                        avg_algae = df_map['Algae_Tao'].mean()
+                        
+                        if wq_choice == "Độ đục & TSS (NDTI)":
+                            c3.metric(label="Độ đục NDTI", value=f"{avg_ndti:.3f}" if pd.notna(avg_ndti) else "N/A")
+                            c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{'Đục/Ô nhiễm' if avg_ndti > 0.05 else 'Trong/Bình thường'}</b></p>", unsafe_allow_html=True)
+                        else:
+                            c3.metric(label="Tảo (Chl-a)", value=f"{avg_algae:.3f}" if pd.notna(avg_algae) else "N/A")
+                            c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{'Có rêu tảo' if avg_algae > 0.1 else 'Thấp/Bình thường'}</b></p>", unsafe_allow_html=True)
+
+                # ============ CHẾ ĐỘ 2: TỪNG TỈNH ============
+                else:
+                    st.markdown(f"<p style='text-align:center; font-weight:bold; color:#ff7f0e; margin-bottom:5px;'>📍 {tinh_so_sanh.upper()}</p>", unsafe_allow_html=True)
+                    if not df_map_draw.empty:
+                        row = df_map_draw.iloc[0]
+                        
+                        if "1." in layer_type or "2." in layer_type:
+                            st.caption(f"Kỳ: T{thang_qk}/{nam_qk} ➔ T{thang_tl}/{nam_tl}")
+                            c3, c4 = st.columns(2)
+                            c3.metric(label="DT Hiện tại", value=f"{row['Dien_Tich_Nuoc_km2_tl']:,.1f} km²")
+                            c4.metric(label="Tỷ lệ", value=f"{row['TyLe_PhanTram']:,.1f} %", delta=f"{row['ChenhLech']:,.1f} km²")
+                            
+                            status = "🟢 Dư thừa/tăng" if row['ChenhLech'] > 0 else ("🔴 Thâm hụt/giảm" if row['ChenhLech'] < 0 else "⚪ Ổn định")
+                            st.markdown(f"<p style='font-size:13px; margin-top:5px;'>Trạng thái: <b>{status}</b></p>", unsafe_allow_html=True)
+
+                        elif "3." in layer_type:
+                            pct = row['TyLe_PhanTram']
+                            st.metric(label="Sự sụt giảm", value=f"{pct:,.1f} %", delta="Biến động" if pct > -10 else "Báo động đỏ", delta_color="normal" if pct > -10 else "inverse")
+                            if pct <= -10:
+                                st.error("🚨 Cảnh báo Hạn hán!")
+                            else:
+                                st.success("✅ Mức nước an toàn.")
+
+                        elif "4." in layer_type:
+                            c3, c4 = st.columns(2)
+                            ndti = row['NDTI_DoDuc']
+                            algae = row['Algae_Tao']
+                            
+                            if wq_choice == "Độ đục & TSS (NDTI)":
+                                c3.metric(label="Độ đục NDTI", value=f"{ndti:.3f}" if pd.notna(ndti) and ndti != 0 else "N/A")
+                                status_ndti = "Rất trong" if ndti < -0.05 else ("Trong" if ndti < 0 else ("Hơi đục" if ndti < 0.05 else "Đục/Ô nhiễm"))
+                                c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{status_ndti}</b></p>", unsafe_allow_html=True)
+                            else:
+                                c3.metric(label="Tảo (Chl-a)", value=f"{algae:.3f}" if pd.notna(algae) and algae != 0 else "N/A")
+                                status_algae = "Rất thấp" if algae < -0.1 else ("Bình thường" if algae < 0 else ("Có rêu tảo" if algae < 0.1 else "Bùng phát"))
+                                c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{status_algae}</b></p>", unsafe_allow_html=True)
+                    else:
+                        st.warning("Chưa có số liệu.")
 
 # ----------------- CỘT GIỮA (BẢN ĐỒ FULL TRUNG TÂM) -----------------
 with col_map:
-    df_qk = df[(df['Nam'] == nam_qk) & (df['Thang'] == thang_qk)].groupby('Tinh').agg({
-        'Dien_Tich_Nuoc_km2': 'sum'
-    }).reset_index()
-    
-    df_tl = df[(df['Nam'] == nam_tl) & (df['Thang'] == thang_tl)].groupby('Tinh').agg({
-        'Dien_Tich_Nuoc_km2': 'sum',
-        'NDTI_DoDuc': 'mean', 
-        'Algae_Tao': 'mean'
-    }).reset_index()
-    
-    df_map = pd.merge(df_tl, df_qk, on='Tinh', suffixes=('_tl', '_qk'), how='outer')
-    df_map['Dien_Tich_Nuoc_km2_tl'] = df_map['Dien_Tich_Nuoc_km2_tl'].fillna(0)
-    df_map['Dien_Tich_Nuoc_km2_qk'] = df_map['Dien_Tich_Nuoc_km2_qk'].fillna(0)
-    
-    df_map['ChenhLech'] = df_map['Dien_Tich_Nuoc_km2_tl'] - df_map['Dien_Tich_Nuoc_km2_qk']
-    df_map['TyLe_PhanTram'] = np.where(df_map['Dien_Tich_Nuoc_km2_qk'] > 0, 
-                                      (df_map['ChenhLech'] / df_map['Dien_Tich_Nuoc_km2_qk']) * 100, 0)
-
-    if tinh_so_sanh != "Toàn Quốc":
-        df_map = df_map[df_map['Tinh'] == tinh_so_sanh]
-        map_center = get_lat_lon(tinh_so_sanh)
-        map_zoom = 9 
-    else:
-        map_center = [16.0, 106.0]
-        map_zoom = 5.5
-
-    df_map['Lat'] = df_map['Tinh'].apply(lambda x: get_lat_lon(x)[0])
-    df_map['Lon'] = df_map['Tinh'].apply(lambda x: get_lat_lon(x)[1])
-
     m = folium.Map(location=map_center, zoom_start=map_zoom, control_scale=True, zoom_control=True)
 
     folium.TileLayer(
@@ -304,9 +372,6 @@ with col_map:
     minimap = plugins.MiniMap(toggle_display=True, position="bottomright", width=150, height=150)
     m.add_child(minimap)
 
-    # ==========================================
-    # LOGIC HIỂN THỊ CÁC TÍNH NĂNG TRÊN BẢN ĐỒ
-    # ==========================================
     gee_url = None
     layer_name = 'Layer'
     show_layer = True
@@ -316,7 +381,7 @@ with col_map:
         layer_name = 'Nước (JRC)'
         show_layer = False 
         
-        for idx, row in df_map.iterrows():
+        for idx, row in df_map_draw.iterrows():
             if row['ChenhLech'] > 0:
                 color, hien_thi = '#00ff00', f"Tăng: {row['ChenhLech']:.2f} km²"
             elif row['ChenhLech'] < 0:
@@ -348,7 +413,7 @@ with col_map:
         layer_name = 'Cân bằng nước GEE (P - ET)'
         show_layer = False
         
-        for idx, row in df_map.iterrows():
+        for idx, row in df_map_draw.iterrows():
             pct = row['TyLe_PhanTram']
             if pct > 0:
                 icon_color, icon_type = 'blue', 'arrow-up'
@@ -382,7 +447,7 @@ with col_map:
         layer_name = 'Hạn hán GEE (PDSI)'
         show_layer = True
         
-        for idx, row in df_map.iterrows():
+        for idx, row in df_map_draw.iterrows():
             pct = row['TyLe_PhanTram']
             if pct <= -10:
                 folium.Marker(
@@ -408,7 +473,7 @@ with col_map:
         gee_url = get_water_quality_gee_url(nam_tl, thang_tl, wq_type_code)
         layer_name = 'Độ đục (NDTI)' if wq_type_code == "TSS" else 'Mức độ Tảo (Chlorophyll-a)'
         
-        for idx, row in df_map.iterrows():
+        for idx, row in df_map_draw.iterrows():
             tinh = row['Tinh']
             if wq_type_code == "TSS":
                 val = row['NDTI_DoDuc']
@@ -473,7 +538,6 @@ with col_map:
 
 # ----------------- CỘT PHẢI (THỐNG KÊ & BIỂU ĐỒ) -----------------
 with col_right:
-    # SỬ DỤNG @st.fragment ĐỂ KHI ĐỔI BIỂU ĐỒ BẢN ĐỒ KHÔNG BỊ LOAD LẠI
     @st.fragment
     def render_right_panel():
         with st.container(height=UI_HEIGHT, border=False):
@@ -523,9 +587,9 @@ with col_right:
             if not df_plot.empty:
                 if loai_chart == "Tròn (Pie)":
                     if isinstance(y_col, list):
-                        st.warning("⚠️ Biểu đồ Tròn không hỗ trợ hiển thị 2 chỉ số Chất lượng nước cùng lúc. Vui lòng chọn Cột hoặc Đường.")
+                        st.warning("⚠️ Biểu đồ Tròn không hỗ trợ hiển thị 2 chỉ số Chất lượng nước cùng lúc.")
                     elif df_plot[y_col].min() < 0:
-                        st.warning(f"⚠️ Dữ liệu của chủ đề '{chu_de_chart[3:]}' chứa giá trị âm, không thể vẽ biểu đồ Tròn. Vui lòng chọn Cột hoặc Đường.")
+                        st.warning(f"⚠️ Dữ liệu của chủ đề '{chu_de_chart[3:]}' chứa giá trị âm, không thể vẽ biểu đồ Tròn.")
                     else:
                         fig = px.pie(df_plot, names='ThoiGian', values=y_col, hole=0.3, title=title)
                         fig.update_layout(margin=dict(l=0, r=0, t=40, b=50), height=300)
@@ -547,5 +611,4 @@ with col_right:
             else:
                 st.warning("Không có dữ liệu để vẽ biểu đồ.")
                 
-    # Chạy hàm đã được bọc fragment
     render_right_panel()
