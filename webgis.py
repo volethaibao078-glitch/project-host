@@ -7,7 +7,6 @@ from folium import plugins
 from streamlit_folium import st_folium
 import ee
 from branca.element import Template, MacroElement
-import pymannkendall as mk
 import numpy as np
 
 # ==========================================
@@ -273,8 +272,7 @@ with col_left:
             "1. Biến động diện tích (Chấm tròn tăng/giảm)",
             "2. Cân bằng nước (Marker tỷ lệ % thay đổi)",
             "3. Đánh giá Hạn hán (Cảnh báo đỏ >10%)",
-            "4. Mô hình hóa Chất lượng nước (Lấy từ CSV)",
-            "5. Phân tích Xu hướng (Bản đồ Trend Mann-Kendall)"
+            "4. Mô hình hóa Chất lượng nước (Lấy từ CSV)"
         ])
         
         wq_choice = "TSS"
@@ -483,56 +481,6 @@ with col_map:
         macro._template = Template(legend_html)
         m.get_root().add_child(macro)
 
-    elif "5. " in layer_type:
-        gee_url = get_ndwi_url(nam_tl, thang_tl)
-        layer_name = 'Chỉ số Nước NDWI'
-        show_layer = False
-        
-        for idx, row in df_map.iterrows():
-            tinh = row['Tinh']
-            
-            mask_time = (df['Date'] >= start_date) & (df['Date'] <= end_date)
-            df_t = df[(df['Tinh'] == tinh) & mask_time].groupby('Date')['Dien_Tich_Nuoc_km2'].sum().reset_index()
-            df_t = df_t.sort_values(by=['Date'])
-            
-            if len(df_t) > 3: 
-                try:
-                    res = mk.original_test(df_t['Dien_Tich_Nuoc_km2'].values)
-                    trend = res.trend
-                except:
-                    trend = 'no data'
-            else:
-                trend = 'no data'
-
-            if trend == 'increasing':
-                icon_color, icon_type, txt = 'green', 'arrow-trend-up', 'Xu hướng: Đang Tăng 📈'
-            elif trend == 'decreasing':
-                icon_color, icon_type, txt = 'red', 'arrow-trend-down', 'Xu hướng: Đang Giảm 📉'
-            elif trend == 'no data':
-                icon_color, icon_type, txt = 'lightgray', 'circle-exclamation', 'Khoảng TG quá ngắn (<4 tháng) để tính MK ⚠️'
-            else:
-                icon_color, icon_type, txt = 'lightgray', 'minus', 'Xu hướng: Ổn định/Không rõ ➖'
-
-            folium.Marker(
-                location=[row['Lat'], row['Lon']],
-                icon=folium.Icon(color=icon_color, icon=icon_type, prefix='fa'),
-                tooltip=f"<b>{tinh}</b><br>{txt}<br><small>(Từ {int(thang_qk)}/{int(nam_qk)} đến {int(thang_tl)}/{int(nam_tl)})</small>"
-            ).add_to(m)
-            
-        legend_html = """
-        {% macro html(this, kwargs) %}
-        <div style="position: fixed; bottom: 30px; left: 30px; width: 280px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-            <b>Xu hướng dài hạn (Mann-Kendall)</b><br>
-            <i style="background:green; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Xu hướng <b>Tăng</b><br>
-            <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Xu hướng <b>Giảm</b><br>
-            <i style="background:lightgray; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Ổn định / Không rõ xu hướng
-        </div>
-        {% endmacro %}
-        """
-        macro = MacroElement()
-        macro._template = Template(legend_html)
-        m.get_root().add_child(macro)
-
     if gee_url:
         folium.raster_layers.TileLayer(
             tiles=gee_url, attr='Map Data &copy; Google Earth Engine',
@@ -558,8 +506,7 @@ with col_right:
             "1. Biến động diện tích",
             "2. Cân bằng nước",
             "3. Đánh giá Hạn hán",
-            "4. Mô hình hóa Chất lượng nước",
-            "5. Phân tích Xu hướng"
+            "4. Mô hình hóa Chất lượng nước"
         ])
         
         loai_chart = st.selectbox("Chọn Loại biểu đồ:", ["Cột (Bar)", "Đường (Line)", "Tròn (Pie)"])
@@ -568,20 +515,12 @@ with col_right:
         df_prov['ChenhLech_km2'] = df_prov['Dien_Tich_Nuoc_km2'].diff()
         df_prov['TyLe_PhanTram'] = df_prov['Dien_Tich_Nuoc_km2'].pct_change() * 100
         
-        if "5." not in chu_de_chart:
-            nam_chart = st.selectbox("Chọn Năm:", sorted(df['Nam'].unique(), reverse=True), key='nam_chart')
-            df_plot = df_prov[df_prov['Nam'] == nam_chart].copy()
-            df_plot['Thang'] = df_plot['Thang'].astype(int)
-            df_plot['ThoiGian'] = "Tháng " + df_plot['Thang'].astype(str)
-        else:
-            st.caption(f"Đang hiển thị biểu đồ từ {int(thang_qk)}/{int(nam_qk)} đến {int(thang_tl)}/{int(nam_tl)}")
-            mask_chart_time = (df_prov['Date'] >= start_date) & (df_prov['Date'] <= end_date)
-            df_plot = df_prov[mask_chart_time].copy()
-            df_plot['Thang'] = df_plot['Thang'].astype(int)
-            df_plot['Nam'] = df_plot['Nam'].astype(int)
-            df_plot['ThoiGian'] = df_plot['Thang'].astype(str) + '/' + df_plot['Nam'].astype(str)
+        nam_chart = st.selectbox("Chọn Năm:", sorted(df['Nam'].unique(), reverse=True), key='nam_chart')
+        df_plot = df_prov[df_prov['Nam'] == nam_chart].copy()
+        df_plot['Thang'] = df_plot['Thang'].astype(int)
+        df_plot['ThoiGian'] = "Tháng " + df_plot['Thang'].astype(str)
             
-        if "1." in chu_de_chart or "5." in chu_de_chart:
+        if "1." in chu_de_chart:
             y_col = 'Dien_Tich_Nuoc_km2'
             title = f"Diện tích mặt nước (km²)"
             color_seq = ['#87CEFA']
@@ -627,28 +566,3 @@ with col_right:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("Không có dữ liệu để vẽ biểu đồ.")
-
-        if "5." in chu_de_chart:
-            st.markdown("---")
-            st.markdown("**Kết quả thuật toán Mann-Kendall**")
-            if len(df_plot) > 3:
-                data_series = df_plot['Dien_Tich_Nuoc_km2'].values
-                try:
-                    mk_result = mk.original_test(data_series)
-                    trend_val = mk_result.trend
-                    p_val = mk_result.p
-                except:
-                    trend_val = 'no trend'
-                    p_val = None
-                
-                trend_trans = {
-                    'increasing': 'Đang Tăng 📈',
-                    'decreasing': 'Đang Giảm 📉',
-                    'no trend': 'Không rõ ràng ➖'
-                }
-                
-                st.info(f"**Xu hướng:** {trend_trans.get(trend_val, trend_val)}")
-                if p_val is not None:
-                    st.caption(f"Độ tin cậy (p-value): {p_val:.4f}")
-            else:
-                st.warning("Khoảng thời gian bạn chọn quá ngắn (<4 tháng) để phân tích Mann-Kendall.")
