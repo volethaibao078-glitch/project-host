@@ -152,35 +152,46 @@ def get_water_quality_gee_url(year, month, wq_type="TSS"):
 # ==========================================
 def get_lat_lon(tinh_name):
     toa_do = {
-        'an giang': [10.5216, 105.1259], 'ba ria - vung tau': [10.4973, 107.1683], 'bac lieu': [9.2941, 105.7278],
+        'an giang': [10.3759, 105.4285], 'ba ria - vung tau': [10.4984, 107.1693], 'bac lieu': [9.2941, 105.7278],
         'bac giang': [21.2731, 106.1946], 'bac kan': [22.1470, 105.8348], 'bac ninh': [21.1861, 106.0763],
-        'ben tre': [10.2440, 106.3753], 'binh duong': [11.1661, 106.6268], 'binh dinh': [13.9030, 109.0528],
-        'binh phuoc': [11.7517, 106.7133], 'binh thuan': [11.0877, 108.0722], 'ca mau': [9.1769, 105.1500],
+        'ben tre': [10.2440, 106.3753], 'binh duong': [10.9804, 106.6519], 'binh dinh': [13.7701, 109.2232],
+        'binh phuoc': [11.5364, 106.8997], 'binh thuan': [10.9333, 108.1000], 'ca mau': [9.1769, 105.1500],
         'can tho': [10.0452, 105.7469], 'cao bang': [22.6667, 106.2500], 'da nang': [16.0678, 108.2208],
-        'dak lak': [12.6667, 108.0382], 'dak nong': [12.2606, 107.8056], 'dien bien': [21.3864, 103.0177],
+        'dak lak': [12.6667, 108.0382], 'dak nong': [12.0000, 107.6833], 'dien bien': [21.3864, 103.0177],
         'dong nai': [10.9410, 106.8209], 'dong thap': [10.4578, 105.6267], 'gia lai': [13.9833, 108.0000],
         'ha giang': [22.8233, 104.9839], 'ha nam': [20.5453, 105.9122], 'ha noi': [21.0285, 105.8542],
-        'ha tinh': [18.3428, 105.9054], 'hai duong': [20.9400, 106.3326], 'hau giang': [9.7984, 105.4711], 
-        'hoa binh': [20.8133, 105.3383], 'hung yen': [20.8525, 106.0506], 'khanh hoa': [12.2388, 109.1967], 
-        'kien giang': [9.8540, 105.1066], 'kon tum': [14.3508, 108.0000], 'lai chau': [22.3956, 103.4519], 
-        'lam dong': [11.9465, 108.4419], 'lang son': [21.8485, 106.7583], 'lao cai': [22.4856, 103.9707], 
-        'long an': [10.5363, 106.4042], 'nam dinh': [20.4200, 106.1683], 'nghe an': [19.3366, 104.8966], 
-        'ninh binh': [20.2539, 105.9750], 'ninh thuan': [11.5646, 108.9886], 'phu tho': [21.3114, 105.2152], 
-        'phu yen': [13.0883, 109.3242], 'quang binh': [17.4833, 106.6000], 'quang nam': [15.5411, 107.9942], 
-        'quang ngai': [15.1205, 108.7923], 'quang ninh': [21.0069, 107.2925], 'quang tri': [16.7461, 107.1893], 
-        'soc trang': [9.6033, 105.9731], 'son la': [21.3253, 103.8974], 'tay ninh': [11.3118, 106.0967], 
-        'thai binh': [20.4500, 106.3333], 'thai nguyen': [21.5928, 105.8442], 'thanh hoa': [20.0406, 105.3060], 
-        'thua thien hue': [16.4637, 107.5905], 'tien giang': [10.4285, 106.2082], 'ho chi minh': [10.8231, 106.6297], 
-        'tra vinh': [9.8211, 106.3025], 'tuyen quang': [21.8214, 105.2131], 'vinh long': [10.2452, 105.9702], 
+        'ha tinh': [18.3428, 105.9054], 'hai duong': [20.9400, 106.3326], 'hau giang': [9.7844, 105.4711],
+        'hoa binh': [20.8133, 105.3383], 'hung yen': [20.6464, 106.0506], 'khanh hoa': [12.2388, 109.1967],
+        'kien giang': [10.0125, 105.0811], 'kon tum': [14.3508, 108.0000], 'lai chau': [22.3956, 103.4519],
+        'lam dong': [11.9465, 108.4419], 'lang son': [21.8485, 106.7583], 'lao cai': [22.4856, 103.9707],
+        'long an': [10.5363, 106.4042], 'nam dinh': [20.4200, 106.1683], 'nghe an': [18.6733, 105.6813],
+        'ninh binh': [20.2539, 105.9750], 'ninh thuan': [11.5646, 108.9886], 'phu tho': [21.3114, 105.2152],
+        'phu yen': [13.0883, 109.3242], 'quang binh': [17.4833, 106.6000], 'quang nam': [15.5411, 108.4870],
+        'quang ngai': [15.1205, 108.7923], 'quang ninh': [20.9505, 107.0734], 'quang tri': [16.8155, 107.1042],
+        'soc trang': [9.6033, 105.9731], 'son la': [21.3253, 103.8974], 'tay ninh': [11.3118, 106.0967],
+        'thai binh': [20.4500, 106.3333], 'thai nguyen': [21.5928, 105.8442], 'thanh hoa': [19.8058, 105.7761],
+        'thua thien hue': [16.4637, 107.5905], 'tien giang': [10.3541, 106.3551], 'ho chi minh': [10.8231, 106.6297],
+        'tra vinh': [9.9323, 106.3453], 'tuyen quang': [21.8214, 105.2131], 'vinh long': [10.2452, 105.9702],
         'vinh phuc': [21.3089, 105.5960], 'yen bai': [21.7229, 104.9113], 'hai phong': [20.8449, 106.6881],
-        'ha tay': [20.9100, 105.7300]  
+        'ha tay': [20.9100, 105.7300]
     }
+    
+    # 1. Chuyển chữ thường, bỏ khoảng trắng và dấu tiếng Việt
     s = str(tinh_name).lower().strip()
     s = s.replace('đ', 'd') 
     s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
     
+    # 2. Dùng bộ lọc bao hàm (in) để "bắt dính" tên tỉnh dù CSV có ghi dư chữ (như TP, Tỉnh, gạch ngang)
     if 'ho chi minh' in s: return [10.8231, 106.6297]
-    return toa_do.get(s, [16.0, 106.0]) 
+    if 'thua thien' in s: return [16.4637, 107.5905]
+    if 'ha noi' in s: return [21.0285, 105.8542]
+    if 'hai phong' in s: return [20.8449, 106.6881]
+    if 'da nang' in s: return [16.0678, 108.2208]
+    if 'can tho' in s: return [10.0452, 105.7469]
+    if 'ba ria' in s: return [10.4984, 107.1693]
+    
+    # 3. Trả về tọa độ mặc định là ngoài KHƠI BIỂN ĐÔNG [16.0, 112.0] nếu không tìm thấy (Tuyệt đối không để 106.0 lọt vào Lào nữa)
+    return toa_do.get(s, [16.0, 112.0]) 
 
 @st.cache_data(show_spinner=False)
 def load_data():
