@@ -4,11 +4,13 @@ import plotly.express as px
 import unicodedata
 import folium
 from folium import plugins
-from streamlit_folium import st_folium
+import streamlit.components.v1 as components # <-- TÍCH HỢP THƯ VIỆN RENDER MƯỢT MÀ
 import ee
-from branca.element import Template, MacroElement
 import numpy as np
 import json
+import copy
+import branca.colormap as cm
+from branca.element import Template, MacroElement
 
 # ==========================================
 # 0. CẤU HÌNH TRANG WEB & CSS FULL SCREEN
@@ -153,7 +155,6 @@ def get_province_feature(geojson_data, province_name):
     if not geojson_data:
         return None
     for feature in geojson_data['features']:
-        # Kiểm tra theo trường Name hoặc Tinh có trong file xuất từ GEE
         if feature['properties'].get('Name') == province_name or feature['properties'].get('Tinh') == province_name:
             return {'type': 'FeatureCollection', 'features': [feature]}
     return None
@@ -265,6 +266,8 @@ with col_left:
         if "4. " in layer_type:
             wq_choice = st.selectbox("Tham số Chất lượng nước:", ["Độ đục & TSS (NDTI)", "Tảo nở hoa (Chlorophyll-a)"])
 
+        wq_type_code = "TSS" if "TSS" in wq_choice else "CHL"
+
         # --- TÍNH TOÁN DỮ LIỆU ---
         df_qk = df[(df['Nam'] == nam_qk) & (df['Thang'] == thang_qk)].groupby('Tinh').agg({'Dien_Tich_Nuoc_km2': 'sum'}).reset_index()
         df_tl = df[(df['Nam'] == nam_tl) & (df['Thang'] == thang_tl)].groupby('Tinh').agg({
@@ -283,7 +286,7 @@ with col_left:
 
         if tinh_so_sanh != "Toàn Quốc":
             df_map_draw = df_map[df_map['Tinh'] == tinh_so_sanh].copy()
-            map_center, map_zoom = get_lat_lon(tinh_so_sanh), 8 # Zoom sát vào tỉnh
+            map_center, map_zoom = get_lat_lon(tinh_so_sanh), 8 
         else:
             df_map_draw, map_center, map_zoom = df_map.copy(), [16.0, 106.0], 5.5
 
@@ -308,17 +311,17 @@ with col_left:
                         c3.metric(label="DT Hiện tại", value=f"{tong_tl:,.0f} km²")
                         c4.metric(label="Biến động", value=f"{tong_tl - tong_qk:,.0f} km²", delta=f"{tong_tl - tong_qk:,.0f} km²")
                         
-                        tinh_tang, tinh_giam = (df_map['ChenhLech'] > 0).sum(), (df_map['ChenhLech'] < 0).sum()
+                        tinh_tang, tinh_giam = (df_map['ChenhLech'] > 0.01).sum(), (df_map['ChenhLech'] < -0.01).sum()
                         st.markdown(f"<p style='font-size:13px; margin-top:5px;'>🟢 <b>{tinh_tang}</b> tỉnh tăng<br>🔴 <b>{tinh_giam}</b> tỉnh giảm</p>", unsafe_allow_html=True)
 
                     elif "3." in layer_type:
-                        han_han = df_map[df_map['TyLe_PhanTram'] <= -10]
-                        st.caption(f"Mức cảnh báo: Giảm sút > 10%")
+                        han_han = df_map[df_map['TyLe_PhanTram'] <= -15]
+                        st.caption(f"Mức cảnh báo: Giảm sút > 15%")
                         st.metric(label="Số tỉnh cảnh báo Đỏ", value=f"{len(han_han)} tỉnh", delta="- Nguy cơ hạn hán", delta_color="inverse")
                         if len(han_han) > 0:
                             st.markdown(f"<p style='font-size:12px;'><b>Gồm:</b> {', '.join(han_han['Tinh'].tolist()[:8])}...</p>", unsafe_allow_html=True)
                         else:
-                            st.success("Không có tỉnh mức cảnh báo.")
+                            st.success("Không có tỉnh mức cảnh báo nghiêm trọng.")
 
                     elif "4." in layer_type:
                         st.caption("Trung bình toàn quốc")
@@ -345,14 +348,16 @@ with col_left:
                             c3.metric(label="DT Hiện tại", value=f"{row['Dien_Tich_Nuoc_km2_tl']:,.1f} km²")
                             c4.metric(label="Tỷ lệ", value=f"{row['TyLe_PhanTram']:,.1f} %", delta=f"{row['ChenhLech']:,.1f} km²")
                             
-                            status = "🟢 Dư thừa/tăng" if row['ChenhLech'] > 0 else ("🔴 Thâm hụt/giảm" if row['ChenhLech'] < 0 else "⚪ Ổn định")
+                            status = "🟢 Dư thừa/tăng" if row['ChenhLech'] > 0.01 else ("🔴 Thâm hụt/giảm" if row['ChenhLech'] < -0.01 else "⚪ Ổn định")
                             st.markdown(f"<p style='font-size:13px; margin-top:5px;'>Trạng thái: <b>{status}</b></p>", unsafe_allow_html=True)
 
                         elif "3." in layer_type:
                             pct = row['TyLe_PhanTram']
-                            st.metric(label="Sự sụt giảm", value=f"{pct:,.1f} %", delta="Biến động" if pct > -10 else "Báo động đỏ", delta_color="normal" if pct > -10 else "inverse")
-                            if pct <= -10:
-                                st.error("🚨 Cảnh báo Hạn hán!")
+                            st.metric(label="Sự sụt giảm", value=f"{pct:,.1f} %", delta="Biến động" if pct > -5 else "Báo động", delta_color="normal" if pct > -5 else "inverse")
+                            if pct <= -15:
+                                st.error("🚨 Cảnh báo Hạn hán nghiêm trọng!")
+                            elif pct <= -5:
+                                st.warning("⚠️ Cảnh báo suy giảm mặt nước.")
                             else:
                                 st.success("✅ Mức nước an toàn.")
 
@@ -363,11 +368,11 @@ with col_left:
                             
                             if wq_choice == "Độ đục & TSS (NDTI)":
                                 c3.metric(label="Độ đục NDTI", value=f"{ndti:.3f}" if pd.notna(ndti) and ndti != 0 else "N/A")
-                                status_ndti = "Rất trong" if ndti < -0.05 else ("Trong" if ndti < 0 else ("Hơi đục" if ndti < 0.05 else "Đục/Ô nhiễm"))
+                                status_ndti = "Rất trong" if ndti < -0.05 else ("Trong" if ndti < 0 else ("Hơi đục" if ndti < 0.05 else ("Đục" if ndti < 0.1 else ("Rất đục" if ndti < 0.15 else "Ô nhiễm"))))
                                 c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{status_ndti}</b></p>", unsafe_allow_html=True)
                             else:
                                 c3.metric(label="Tảo (Chl-a)", value=f"{algae:.3f}" if pd.notna(algae) and algae != 0 else "N/A")
-                                status_algae = "Rất thấp" if algae < -0.1 else ("Bình thường" if algae < 0 else ("Có rêu tảo" if algae < 0.1 else "Bùng phát"))
+                                status_algae = "Rất thấp" if algae < -0.1 else ("Bình thường" if algae < 0 else ("Có rêu tảo" if algae < 0.1 else ("Phát triển" if algae < 0.2 else ("Bùng phát" if algae < 0.3 else "Nghiêm trọng"))))
                                 c4.markdown(f"<p style='font-size:12px; margin-top:20px'>Phân mức:<br><b>{status_algae}</b></p>", unsafe_allow_html=True)
                     else:
                         st.warning("Chưa có số liệu.")
@@ -384,11 +389,8 @@ with col_map:
     minimap = plugins.MiniMap(toggle_display=True, position="bottomright", width=150, height=150)
     m.add_child(minimap)
 
-    gee_url = None
-    layer_name = 'Layer'
-    show_layer = True
-
     # 1. LOAD LỚP DỮ LIỆU GEE CƠ BẢN TỪ GOOGLE EARTH ENGINE
+    show_layer = True
     if "1. " in layer_type:
         gee_url = get_gee_water_url()
         layer_name = 'Nước (JRC)'
@@ -400,9 +402,7 @@ with col_map:
     elif "3. " in layer_type:
         gee_url = get_drought_url(nam_tl, thang_tl)
         layer_name = 'Hạn hán GEE (PDSI)'
-        show_layer = True
     elif "4. " in layer_type:
-        wq_type_code = "TSS" if "TSS" in wq_choice else "CHL"
         gee_url = get_water_quality_gee_url(nam_tl, thang_tl, wq_type_code)
         layer_name = 'Độ đục (NDTI)' if wq_type_code == "TSS" else 'Mức độ Tảo (Chlorophyll-a)'
 
@@ -412,159 +412,187 @@ with col_map:
             name=layer_name, overlay=True, control=True, opacity=0.7, show=show_layer 
         ).add_to(m)
 
-    # 2. VẼ ĐƯỜNG VIỀN HIGHLIGHT TỪ FILE GEOJSON LOCAL BẰNG PYTHON THUẦN
-    if tinh_so_sanh != "Toàn Quốc":
-        prov_geojson = get_province_feature(full_geojson, tinh_so_sanh)
-        if prov_geojson:
-            folium.GeoJson(
-                prov_geojson,
-                name=f'Ranh giới {tinh_so_sanh}',
-                style_function=lambda x: {
-                    'color': '#FF0000',      # Viền màu Đỏ nổi bật
-                    'weight': 3,             # Độ dày viền
-                    'fillColor': '#000000',  # Nền đen
-                    'fillOpacity': 0         # Độ trong suốt = 0 (Rỗng bên trong)
-                }
-            ).add_to(m)
 
-    # 3. THÊM CÁC MAKER / VÒNG TRÒN DỮ LIỆU
-    if "1. " in layer_type:
-        for idx, row in df_map_draw.iterrows():
-            if row['ChenhLech'] > 0:
-                color, hien_thi = '#00ff00', f"Tăng: {row['ChenhLech']:.2f} km²"
-            elif row['ChenhLech'] < 0:
-                color, hien_thi = '#ff0000', f"Giảm: {abs(row['ChenhLech']):.2f} km²"
-            else: continue 
-
-            radius = min(2000 + (abs(row['ChenhLech']) * 50), 15000)
-            folium.Circle(
-                location=[row['Lat'], row['Lon']], radius=radius, color=color, weight=1.5,
-                fill=True, fill_color=color, fill_opacity=0.6,
-                tooltip=f"<b>{row['Tinh']}</b><br>{hien_thi}"
-            ).add_to(m)
+    # ==========================================
+    # 2. XÂY DỰNG BẢN ĐỒ CHOROPLETH RỜI RẠC (DISCRETE COLORS)
+    # ==========================================
+    legend_html = ""
+    
+    # Hàm gán màu tĩnh (Không pha trộn) để map 100% với chú giải
+    def get_discrete_color(val, l_type, w_type):
+        if val is None or pd.isna(val):
+            return 'gray'
             
-        legend_html = """
-        {% macro html(this, kwargs) %}
-        <div style="position: fixed; bottom: 30px; left: 30px; width: 250px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-            <b>Biến động diện tích nước</b><br>
-            <i style="background:#00ff00; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Diện tích nước <b>Tăng</b><br>
-            <i style="background:#ff0000; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Diện tích nước <b>Giảm</b>
-        </div>
-        {% endmacro %}
-        """
-        macro = MacroElement()
-        macro._template = Template(legend_html)
-        m.get_root().add_child(macro)
-
-    elif "2. " in layer_type:
-        for idx, row in df_map_draw.iterrows():
-            pct = row['TyLe_PhanTram']
-            if pct > 0:
-                icon_color, icon_type = 'blue', 'arrow-up'
-                status = "Dư thừa / Tăng trưởng"
-            elif pct < 0:
-                icon_color, icon_type = 'orange', 'arrow-down'
-                status = "Thâm hụt / Suy giảm"
-            else: continue
-
-            folium.Marker(
-                location=[row['Lat'], row['Lon']],
-                icon=folium.Icon(color=icon_color, icon=icon_type, prefix='fa'),
-                tooltip=f"<b>{row['Tinh']}</b><br>Trạng thái: {status}<br>Tỷ lệ: {pct:.1f}% so với kỳ trước"
-            ).add_to(m)
+        if "1. " in l_type:
+            if val > 0.01: return 'green'
+            elif val < -0.01: return 'red'
+            else: return 'yellow'
             
-        legend_html = """
-        {% macro html(this, kwargs) %}
-        <div style="position: fixed; bottom: 30px; left: 30px; width: 260px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-            <b>Cân bằng nước</b><br>
-            <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Dư thừa / Tăng trưởng<br>
-            <i style="background:orange; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> Thâm hụt / Suy giảm
-        </div>
-        {% endmacro %}
-        """
-        macro = MacroElement()
-        macro._template = Template(legend_html)
-        m.get_root().add_child(macro)
-
-    elif "3. " in layer_type:
-        for idx, row in df_map_draw.iterrows():
-            pct = row['TyLe_PhanTram']
-            if pct <= -10:
-                folium.Marker(
-                    location=[row['Lat'], row['Lon']],
-                    icon=folium.Icon(color='red', icon='fire', prefix='fa'),
-                    tooltip=f"<div style='color:red;'><b>🚨 CẢNH BÁO: {row['Tinh']}</b><br>Diện tích nước sụt giảm mạnh: {pct:.1f}%<br>Nguy cơ khô hạn cao!</div>"
-                ).add_to(m)
+        elif "2. " in l_type:
+            if val > 0.01: return 'blue'
+            elif val < -0.01: return 'orange'
+            else: return 'white'
+            
+        elif "3. " in l_type:
+            if val >= -5: return 'lightgreen'
+            elif val > -15: return 'orange'
+            else: return 'red'
+            
+        elif "4. " in l_type:
+            if w_type == "TSS":
+                if val < -0.05: return 'blue'
+                elif val < 0: return 'cyan'
+                elif val < 0.05: return 'yellow'
+                elif val < 0.1: return 'orange'
+                elif val < 0.15: return 'red'
+                else: return 'brown'
+            else:
+                if val < -0.1: return 'darkblue'
+                elif val < 0: return 'blue'
+                elif val < 0.1: return 'cyan'
+                elif val < 0.2: return 'green'
+                elif val < 0.3: return 'yellow'
+                else: return 'red'
                 
+        return 'gray'
+
+    # Thiết lập chú giải HTML
+    if "1. " in layer_type:
+        cot_gia_tri = 'ChenhLech'
+        chu_thich = 'Biến động diện tích (km²)'
         legend_html = """
         {% macro html(this, kwargs) %}
         <div style="position: fixed; bottom: 30px; left: 30px; width: 280px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-            <b>Đánh giá Hạn hán</b><br>
-            <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; border-radius: 50%;"></i> <b>Báo động:</b> Nước sụt giảm > 10%
+            <b>Màu ranh giới: Biến động</b><br>
+            <i style="background:green; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Tăng (Dư thừa nước)<br>
+            <i style="background:yellow; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Ổn định (Ít biến động)<br>
+            <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Giảm (Mất nước)
         </div>
         {% endmacro %}
         """
-        macro = MacroElement()
-        macro._template = Template(legend_html)
-        m.get_root().add_child(macro)
-
+    elif "2. " in layer_type:
+        cot_gia_tri = 'TyLe_PhanTram'
+        chu_thich = 'Cân bằng nước (%)'
+        legend_html = """
+        {% macro html(this, kwargs) %}
+        <div style="position: fixed; bottom: 30px; left: 30px; width: 290px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
+            <b>Màu ranh giới: Cân bằng nước</b><br>
+            <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Dư thừa / Tăng trưởng dương<br>
+            <i style="background:white; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Trạng thái cân bằng<br>
+            <i style="background:orange; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Thâm hụt / Suy giảm
+        </div>
+        {% endmacro %}
+        """
+    elif "3. " in layer_type:
+        cot_gia_tri = 'TyLe_PhanTram'
+        chu_thich = 'Đánh giá Hạn hán (%)'
+        legend_html = """
+        {% macro html(this, kwargs) %}
+        <div style="position: fixed; bottom: 30px; left: 30px; width: 290px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
+            <b>Màu ranh giới: Hạn hán</b><br>
+            <i style="background:lightgreen; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> An toàn (Giảm < 5%)<br>
+            <i style="background:orange; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Cảnh báo (Giảm 5% - 15%)<br>
+            <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Hạn hán (Giảm > 15%)
+        </div>
+        {% endmacro %}
+        """
     elif "4. " in layer_type:
-        for idx, row in df_map_draw.iterrows():
-            tinh = row['Tinh']
-            if wq_type_code == "TSS":
-                val = row['NDTI_DoDuc']
-                if pd.notna(val) and val != 0:
-                    info_text = f"Chỉ số Độ đục (NDTI): <b>{val:.3f}</b>"
-                else:
-                    info_text = "Không có dữ liệu mặt nước (NDTI = 0) ☁️"
-            else:
-                val = row['Algae_Tao']
-                if pd.notna(val) and val != 0:
-                    info_text = f"Chỉ số Tảo: <b>{val:.3f}</b>"
-                else:
-                    info_text = "Không có dữ liệu mặt nước (Algae = 0) ☁️"
-
-            folium.Marker(
-                location=[row['Lat'], row['Lon']],
-                icon=folium.Icon(color='cadetblue', icon='info-sign'),
-                tooltip=f"<b>{tinh}</b><br>{info_text}"
-            ).add_to(m)
-            
         if wq_type_code == "TSS":
+            cot_gia_tri = 'NDTI_DoDuc'
+            chu_thich = 'Chỉ số Độ đục (NDTI)'
             legend_html = """
             {% macro html(this, kwargs) %}
             <div style="position: fixed; bottom: 30px; left: 30px; width: 280px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-                <b>Độ đục nước (NDTI)</b><br>
-                <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Rất trong <b>(< -0.05)</b><br>
-                <i style="background:cyan; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Trong <b>(-0.05 đến 0)</b><br>
-                <i style="background:yellow; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Hơi đục <b>(0 đến 0.05)</b><br>
-                <i style="background:orange; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Đục <b>(0.05 đến 0.1)</b><br>
-                <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Rất đục <b>(0.1 đến 0.15)</b><br>
-                <i style="background:brown; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Ô nhiễm <b>(> 0.15)</b>
+                <b>Màu ranh giới: Độ đục (NDTI)</b><br>
+                <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Rất trong <b>(< -0.05)</b><br>
+                <i style="background:cyan; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Trong <b>(-0.05 đến 0)</b><br>
+                <i style="background:yellow; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Hơi đục <b>(0 đến 0.05)</b><br>
+                <i style="background:orange; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Đục <b>(0.05 đến 0.1)</b><br>
+                <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Rất đục <b>(0.1 đến 0.15)</b><br>
+                <i style="background:brown; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Ô nhiễm <b>(> 0.15)</b>
             </div>
             {% endmacro %}
             """
         else:
+            cot_gia_tri = 'Algae_Tao'
+            chu_thich = 'Mức độ Tảo (Chlorophyll-a)'
             legend_html = """
             {% macro html(this, kwargs) %}
             <div style="position: fixed; bottom: 30px; left: 30px; width: 310px; background-color: white; z-index:9999; font-size:14px; border:2px solid grey; border-radius:6px; padding: 10px;">
-                <b>Mức độ Tảo (Chlorophyll-a)</b><br>
-                <i style="background:darkblue; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Rất thấp <b>(< -0.1)</b><br>
-                <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Bình thường <b>(-0.1 đến 0)</b><br>
-                <i style="background:cyan; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Có rêu tảo <b>(0 đến 0.1)</b><br>
-                <i style="background:green; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Tảo phát triển <b>(0.1 đến 0.2)</b><br>
-                <i style="background:yellow; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Bùng phát <b>(0.2 đến 0.3)</b><br>
-                <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px;"></i> Bùng phát nghiêm trọng <b>(> 0.3)</b>
+                <b>Màu ranh giới: Mức độ Tảo</b><br>
+                <i style="background:darkblue; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Rất thấp <b>(< -0.1)</b><br>
+                <i style="background:blue; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Bình thường <b>(-0.1 đến 0)</b><br>
+                <i style="background:cyan; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Có rêu tảo <b>(0 đến 0.1)</b><br>
+                <i style="background:green; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Tảo phát triển <b>(0.1 đến 0.2)</b><br>
+                <i style="background:yellow; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Bùng phát <b>(0.2 đến 0.3)</b><br>
+                <i style="background:red; width: 15px; height: 15px; float: left; margin-right: 8px; border: 1px solid black; opacity: 0.8;"></i> Nghiêm trọng <b>(> 0.3)</b>
             </div>
             {% endmacro %}
             """
-        macro = MacroElement()
-        macro._template = Template(legend_html)
-        m.get_root().add_child(macro)
+
+    # Gắn HTML Legend tĩnh vào bản đồ
+    macro = MacroElement()
+    macro._template = Template(legend_html)
+    m.get_root().add_child(macro)
+
+    # Ánh xạ Tỉnh -> Giá trị
+    data_dict = df_map_draw.set_index('Tinh')[cot_gia_tri].to_dict()
+
+    if full_geojson:
+        draw_geojson = copy.deepcopy(full_geojson)
+        
+        if tinh_so_sanh != "Toàn Quốc":
+            draw_geojson['features'] = [
+                f for f in draw_geojson['features'] 
+                if f['properties'].get('Name') == tinh_so_sanh or f['properties'].get('Tinh') == tinh_so_sanh
+            ]
+
+        # Truyền giá trị vào Pop-up
+        for feature in draw_geojson['features']:
+            prov_name = feature['properties'].get('Name') or feature['properties'].get('Tinh')
+            val = data_dict.get(prov_name, None)
+            
+            if val is None or pd.isna(val):
+                feature['properties']['Tooltip_Value'] = "Không có dữ liệu"
+            else:
+                feature['properties']['Tooltip_Value'] = f"{val:,.3f}"
+                
+            feature['properties']['Tooltip_Metric'] = chu_thich
+
+        # Hàm vẽ vùng màu tỉnh CHUẨN XÁC theo mảng rời rạc
+        def style_fn(feature):
+            prov_name = feature['properties'].get('Name') or feature['properties'].get('Tinh')
+            val = data_dict.get(prov_name, None)
+            exact_color = get_discrete_color(val, layer_type, wq_type_code)
+            
+            return {
+                'fillColor': exact_color,
+                'color': 'black',
+                'weight': 3 if tinh_so_sanh != "Toàn Quốc" else 1,
+                'fillOpacity': 0.7 if exact_color != 'gray' else 0.2
+            }
+            
+        def highlight_fn(feature):
+            return {'weight': 4, 'color': 'white', 'fillOpacity': 0.9}
+
+        # Vẽ lớp GeoJSON
+        folium.GeoJson(
+            draw_geojson,
+            name="Bản đồ Phân cấp màu (Choropleth)",
+            style_function=style_fn,
+            highlight_function=highlight_fn,
+            tooltip=folium.GeoJsonTooltip(
+                fields=['Name', 'Tooltip_Metric', 'Tooltip_Value'],
+                aliases=['Tỉnh/Thành phố:', 'Chỉ số:', 'Giá trị:'],
+                localize=True,
+                style="background-color: white; color: #333333; font-family: arial; font-size: 13px; padding: 10px;"
+            )
+        ).add_to(m)
 
     folium.LayerControl().add_to(m)
 
-    st_folium(m, use_container_width=True, height=UI_HEIGHT, returned_objects=[])
+    # Render bản đồ nhanh, không bị nháy trắng bằng components.html
+    components.html(m.get_root().render(), height=UI_HEIGHT)
 
 # ----------------- CỘT PHẢI (THỐNG KÊ & BIỂU ĐỒ) -----------------
 with col_right:
