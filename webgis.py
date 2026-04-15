@@ -8,6 +8,7 @@ from streamlit_folium import st_folium
 import ee
 from branca.element import Template, MacroElement
 import numpy as np
+import json
 
 # ==========================================
 # 0. CẤU HÌNH TRANG WEB & CSS FULL SCREEN
@@ -52,7 +53,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. KHỞI TẠO GEE
+# 1. KHỞI TẠO GEE CHO CÁC LỚP ẢNH (RASTER)
 # ==========================================
 @st.cache_resource(show_spinner=False)
 def init_gee():
@@ -76,7 +77,7 @@ def add_ee_layer(self, ee_image_object, vis_params, name, opacity=0.6, show=Fals
 
 folium.Map.add_ee_layer = add_ee_layer
 
-# --- CÁC HÀM LẤY LAYER TỪ GEE ---
+# --- CÁC HÀM LẤY LỚP BẢN ĐỒ GEE CƠ BẢN ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_gee_water_url():
     try:
@@ -84,20 +85,6 @@ def get_gee_water_url():
         water_layer = dataset.select('occurrence')
         vis_params = {'min': 0, 'max': 100, 'palette': ['ffffff', '0000ff']}
         return ee.Image(water_layer).getMapId(vis_params)['tile_fetcher'].url_format
-    except:
-        return None
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_ndwi_url(year, month):
-    try:
-        start_date = f'{int(year)}-{int(month):02d}-01'
-        end_date = f'{int(year)}-{int(month):02d}-28'
-        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterDate(start_date, end_date).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-        image = collection.median()
-        ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
-        water_mask = ndwi.updateMask(ndwi.gte(0)) 
-        vis_params = {'min': 0, 'max': 1, 'palette': ['00FFFF', '0000FF']}
-        return ee.Image(water_mask).getMapId(vis_params)['tile_fetcher'].url_format
     except:
         return None
 
@@ -148,8 +135,29 @@ def get_water_quality_gee_url(year, month, wq_type="TSS"):
         return None
 
 # ==========================================
-# 2. HÀM HỖ TRỢ & LOAD DỮ LIỆU
+# 2. HÀM ĐỌC DỮ LIỆU LOCAL (CSV & GEOJSON)
 # ==========================================
+
+@st.cache_data(show_spinner=False)
+def load_geojson():
+    """Đọc file GeoJSON chứa ranh giới 34 tỉnh trực tiếp từ thư mục cục bộ"""
+    try:
+        with open('RanhGioi_34Tinh_VietNam.geojson', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        st.error(f"Không tìm thấy file RanhGioi_34Tinh_VietNam.geojson: {e}")
+        return None
+
+def get_province_feature(geojson_data, province_name):
+    """Lọc lấy Feature (ranh giới) của một tỉnh cụ thể từ file GeoJSON"""
+    if not geojson_data:
+        return None
+    for feature in geojson_data['features']:
+        # Kiểm tra theo trường Name hoặc Tinh có trong file xuất từ GEE
+        if feature['properties'].get('Name') == province_name or feature['properties'].get('Tinh') == province_name:
+            return {'type': 'FeatureCollection', 'features': [feature]}
+    return None
+
 def get_lat_lon(tinh_name):
     toa_do = {
         'an giang': [10.3759, 105.4285], 'ba ria - vung tau': [10.4984, 107.1693], 'bac lieu': [9.2941, 105.7278],
@@ -172,16 +180,13 @@ def get_lat_lon(tinh_name):
         'thai binh': [20.4500, 106.3333], 'thai nguyen': [21.5928, 105.8442], 'thanh hoa': [19.8058, 105.7761],
         'thua thien hue': [16.4637, 107.5905], 'tien giang': [10.3541, 106.3551], 'ho chi minh': [10.8231, 106.6297],
         'tra vinh': [9.9323, 106.3453], 'tuyen quang': [21.8214, 105.2131], 'vinh long': [10.2452, 105.9702],
-        'vinh phuc': [21.3089, 105.5960], 'yen bai': [21.7229, 104.9113], 'hai phong': [20.8449, 106.6881],
-        'ha tay': [20.9100, 105.7300]
+        'vinh phuc': [21.3089, 105.5960], 'yen bai': [21.7229, 104.9113], 'hai phong': [20.8449, 106.6881]
     }
     
-    # 1. Chuyển chữ thường, bỏ khoảng trắng và dấu tiếng Việt
     s = str(tinh_name).lower().strip()
     s = s.replace('đ', 'd') 
     s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
     
-    # 2. Dùng bộ lọc bao hàm (in) để "bắt dính" tên tỉnh dù CSV có ghi dư chữ (như TP, Tỉnh, gạch ngang)
     if 'ho chi minh' in s: return [10.8231, 106.6297]
     if 'thua thien' in s: return [16.4637, 107.5905]
     if 'ha noi' in s: return [21.0285, 105.8542]
@@ -190,13 +195,12 @@ def get_lat_lon(tinh_name):
     if 'can tho' in s: return [10.0452, 105.7469]
     if 'ba ria' in s: return [10.4984, 107.1693]
     
-    # 3. Trả về tọa độ mặc định là ngoài KHƠI BIỂN ĐÔNG [16.0, 112.0] nếu không tìm thấy (Tuyệt đối không để 106.0 lọt vào Lào nữa)
     return toa_do.get(s, [16.0, 112.0]) 
 
 @st.cache_data(show_spinner=False)
 def load_data():
     try:
-        df_all = pd.read_csv('BaoCao_ToanQuoc_2020_2024.csv')
+        df_all = pd.read_csv('BaoCao_ToanQuoc_34Tinh_2020_2024.csv')
         cols = ['Thang', 'Nam', 'Tinh', 'Dien_Tich_Nuoc_km2', 'NDTI_DoDuc', 'Algae_Tao']
         df_all = df_all[cols]
         df_all['Tinh'] = df_all['Tinh'].astype(str).str.strip()
@@ -210,6 +214,7 @@ def load_data():
         return pd.DataFrame()
 
 df = load_data()
+full_geojson = load_geojson()
 
 # ==========================================
 # 3. BỐ CỤC 3 CỘT 
@@ -247,7 +252,7 @@ with col_left:
         start_date = pd.to_datetime(f"{int(nam_qk)}-{int(thang_qk):02d}-01")
         end_date = pd.to_datetime(f"{int(nam_tl)}-{int(thang_tl):02d}-01")
 
-        # 3. CHỌN CHỦ ĐỀ (ĐƯA LÊN TRÊN BẢN TIN)
+        # 3. CHỌN CHỦ ĐỀ
         st.markdown("<br>**3. Chủ đề hiển thị**", unsafe_allow_html=True)
         layer_type = st.radio("Chọn lớp dữ liệu:", [
             "1. Biến động diện tích",
@@ -278,7 +283,7 @@ with col_left:
 
         if tinh_so_sanh != "Toàn Quốc":
             df_map_draw = df_map[df_map['Tinh'] == tinh_so_sanh].copy()
-            map_center, map_zoom = get_lat_lon(tinh_so_sanh), 9 
+            map_center, map_zoom = get_lat_lon(tinh_so_sanh), 8 # Zoom sát vào tỉnh
         else:
             df_map_draw, map_center, map_zoom = df_map.copy(), [16.0, 106.0], 5.5
 
@@ -296,10 +301,8 @@ with col_left:
                     st.markdown("<p style='text-align:center; font-weight:bold; color:#1f77b4; margin-bottom:5px;'>🇻🇳 TỔNG HỢP TOÀN QUỐC</p>", unsafe_allow_html=True)
                     
                     if "1." in layer_type or "2." in layer_type:
-                        # Bản tin Biến động & Cân bằng nước
                         tong_qk = df_map['Dien_Tich_Nuoc_km2_qk'].sum()
                         tong_tl = df_map['Dien_Tich_Nuoc_km2_tl'].sum()
-                        
                         st.caption(f"Kỳ: T{thang_qk}/{nam_qk} ➔ T{thang_tl}/{nam_tl}")
                         c3, c4 = st.columns(2)
                         c3.metric(label="DT Hiện tại", value=f"{tong_tl:,.0f} km²")
@@ -309,7 +312,6 @@ with col_left:
                         st.markdown(f"<p style='font-size:13px; margin-top:5px;'>🟢 <b>{tinh_tang}</b> tỉnh tăng<br>🔴 <b>{tinh_giam}</b> tỉnh giảm</p>", unsafe_allow_html=True)
 
                     elif "3." in layer_type:
-                        # Bản tin Hạn hán
                         han_han = df_map[df_map['TyLe_PhanTram'] <= -10]
                         st.caption(f"Mức cảnh báo: Giảm sút > 10%")
                         st.metric(label="Số tỉnh cảnh báo Đỏ", value=f"{len(han_han)} tỉnh", delta="- Nguy cơ hạn hán", delta_color="inverse")
@@ -319,7 +321,6 @@ with col_left:
                             st.success("Không có tỉnh mức cảnh báo.")
 
                     elif "4." in layer_type:
-                        # Bản tin Chất lượng nước
                         st.caption("Trung bình toàn quốc")
                         c3, c4 = st.columns(2)
                         avg_ndti = df_map['NDTI_DoDuc'].mean()
@@ -387,11 +388,47 @@ with col_map:
     layer_name = 'Layer'
     show_layer = True
 
+    # 1. LOAD LỚP DỮ LIỆU GEE CƠ BẢN TỪ GOOGLE EARTH ENGINE
     if "1. " in layer_type:
         gee_url = get_gee_water_url()
         layer_name = 'Nước (JRC)'
         show_layer = False 
-        
+    elif "2. " in layer_type:
+        gee_url = get_water_balance_url(nam_tl, thang_tl)
+        layer_name = 'Cân bằng nước GEE (P - ET)'
+        show_layer = False
+    elif "3. " in layer_type:
+        gee_url = get_drought_url(nam_tl, thang_tl)
+        layer_name = 'Hạn hán GEE (PDSI)'
+        show_layer = True
+    elif "4. " in layer_type:
+        wq_type_code = "TSS" if "TSS" in wq_choice else "CHL"
+        gee_url = get_water_quality_gee_url(nam_tl, thang_tl, wq_type_code)
+        layer_name = 'Độ đục (NDTI)' if wq_type_code == "TSS" else 'Mức độ Tảo (Chlorophyll-a)'
+
+    if gee_url:
+        folium.raster_layers.TileLayer(
+            tiles=gee_url, attr='Map Data &copy; Google Earth Engine',
+            name=layer_name, overlay=True, control=True, opacity=0.7, show=show_layer 
+        ).add_to(m)
+
+    # 2. VẼ ĐƯỜNG VIỀN HIGHLIGHT TỪ FILE GEOJSON LOCAL BẰNG PYTHON THUẦN
+    if tinh_so_sanh != "Toàn Quốc":
+        prov_geojson = get_province_feature(full_geojson, tinh_so_sanh)
+        if prov_geojson:
+            folium.GeoJson(
+                prov_geojson,
+                name=f'Ranh giới {tinh_so_sanh}',
+                style_function=lambda x: {
+                    'color': '#FF0000',      # Viền màu Đỏ nổi bật
+                    'weight': 3,             # Độ dày viền
+                    'fillColor': '#000000',  # Nền đen
+                    'fillOpacity': 0         # Độ trong suốt = 0 (Rỗng bên trong)
+                }
+            ).add_to(m)
+
+    # 3. THÊM CÁC MAKER / VÒNG TRÒN DỮ LIỆU
+    if "1. " in layer_type:
         for idx, row in df_map_draw.iterrows():
             if row['ChenhLech'] > 0:
                 color, hien_thi = '#00ff00', f"Tăng: {row['ChenhLech']:.2f} km²"
@@ -420,10 +457,6 @@ with col_map:
         m.get_root().add_child(macro)
 
     elif "2. " in layer_type:
-        gee_url = get_water_balance_url(nam_tl, thang_tl)
-        layer_name = 'Cân bằng nước GEE (P - ET)'
-        show_layer = False
-        
         for idx, row in df_map_draw.iterrows():
             pct = row['TyLe_PhanTram']
             if pct > 0:
@@ -454,10 +487,6 @@ with col_map:
         m.get_root().add_child(macro)
 
     elif "3. " in layer_type:
-        gee_url = get_drought_url(nam_tl, thang_tl)
-        layer_name = 'Hạn hán GEE (PDSI)'
-        show_layer = True
-        
         for idx, row in df_map_draw.iterrows():
             pct = row['TyLe_PhanTram']
             if pct <= -10:
@@ -480,10 +509,6 @@ with col_map:
         m.get_root().add_child(macro)
 
     elif "4. " in layer_type:
-        wq_type_code = "TSS" if "TSS" in wq_choice else "CHL"
-        gee_url = get_water_quality_gee_url(nam_tl, thang_tl, wq_type_code)
-        layer_name = 'Độ đục (NDTI)' if wq_type_code == "TSS" else 'Mức độ Tảo (Chlorophyll-a)'
-        
         for idx, row in df_map_draw.iterrows():
             tinh = row['Tinh']
             if wq_type_code == "TSS":
@@ -536,12 +561,6 @@ with col_map:
         macro = MacroElement()
         macro._template = Template(legend_html)
         m.get_root().add_child(macro)
-
-    if gee_url:
-        folium.raster_layers.TileLayer(
-            tiles=gee_url, attr='Map Data &copy; Google Earth Engine',
-            name=layer_name, overlay=True, control=True, opacity=0.7, show=show_layer 
-        ).add_to(m)
 
     folium.LayerControl().add_to(m)
 
