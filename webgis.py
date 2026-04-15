@@ -36,20 +36,28 @@ st.markdown("""
         ::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #888; }
         
-        /* Ép nhỏ toàn bộ chữ trong các thẻ metric để chống bị cắt chữ (...) */
-        [data-testid="stMetricValue"] { 
-            font-size: 1.1rem !important; 
-            font-weight: bold !important;
+        /* Ép nhỏ toàn bộ chữ trong các thẻ metric */
+        [data-testid="stMetricValue"] { font-size: 1.1rem !important; font-weight: bold !important; }
+        [data-testid="stMetricLabel"] * { font-size: 0.85rem !important; }
+        [data-testid="stMetricDelta"] * { font-size: 0.85rem !important; }
+        [data-testid="column"] { min-width: 0 !important; }
+
+        /* ========================================================= */
+        /* CSS HACK: GIẢM CHỚP TRẮNG (WHITE FLASH) KHI RENDER BẢN ĐỒ */
+        /* ========================================================= */
+        iframe {
+            background-color: #e5e3df !important; /* Màu xám nền bản đồ Leaflet */
+            border-radius: 8px;
+            opacity: 1;
+            animation: fadeIn 0.5s ease-in-out;
         }
-        [data-testid="stMetricLabel"] * { 
-            font-size: 0.85rem !important; 
+        [data-testid="stHtml"] {
+            background-color: #e5e3df !important;
         }
-        [data-testid="stMetricDelta"] * { 
-            font-size: 0.85rem !important; 
-        }
-        /* Loại bỏ khoảng trắng thừa giữa các cột metric */
-        [data-testid="column"] {
-            min-width: 0 !important;
+        
+        @keyframes fadeIn {
+            from { opacity: 0.8; }
+            to { opacity: 1; }
         }
     </style>
 """, unsafe_allow_html=True)
