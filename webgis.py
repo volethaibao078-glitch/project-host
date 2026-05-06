@@ -68,6 +68,20 @@ def load_geojson():
 def load_data():
     try:
         df_all = pd.read_csv('BaoCao_ToanQuoc_34Tinh_2020_2024.csv')
+        
+        # Tự động xóa khoảng trắng ở đầu/cuối của tất cả các tên cột
+        df_all.columns = df_all.columns.str.strip()
+        
+        # Kiểm tra nếu cột NDDI không tồn tại
+        if 'Chi_So_Han_Han_NDDI' not in df_all.columns:
+            st.warning("⚠️ Cảnh báo: Không tìm thấy cột 'Chi_So_Han_Han_NDDI' trong file CSV. Đang sử dụng giá trị mặc định (0).")
+            df_all['Chi_So_Han_Han_NDDI'] = 0.0
+
+        # Kiểm tra nếu cột Dien_Tich_Nuoc_km2 bị sai tên
+        if 'Dien_Tich_Nuoc_km2' not in df_all.columns:
+            st.error("❌ Lỗi nghiêm trọng: Không tìm thấy cột 'Dien_Tich_Nuoc_km2' trong file CSV!")
+            return pd.DataFrame()
+
         cols = ['Thang', 'Nam', 'Tinh', 'Dien_Tich_Nuoc_km2', 'Chi_So_Han_Han_NDDI']
         df_all = df_all[cols]
         df_all['Tinh'] = df_all['Tinh'].astype(str).str.strip()
