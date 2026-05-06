@@ -67,24 +67,22 @@ def load_geojson():
 @st.cache_data(show_spinner=False)
 def load_data():
     try:
+        # Thêm encoding='utf-8-sig' để khử ký tự BOM ẩn trong file CSV
         df_all = pd.read_csv('BaoCao_ToanQuoc_34Tinh_2020_2024.csv', encoding='utf-8-sig')
         
-        # Làm sạch tên cột: Xóa khoảng trắng 2 đầu và các ký tự ngoặc kép
-        df_all.columns = [str(c).strip().replace('"', '').replace("'", "") for c in df_all.columns]
+        # Xóa khoảng trắng và ký tự lạ (như ngoặc kép) ở tên cột
+        df_all.columns = df_all.columns.str.strip().str.replace('"', '').str.replace("'", "")
         
-        # Đổi tên cột tự động, tách biệt rõ ràng các logic
-        for col in list(df_all.columns):
+        # Đổi tên cột linh hoạt (tự động nhận diện chứa từ khóa NDDI hoặc Diện Tích Nước)
+        col_mapping = {}
+        for col in df_all.columns:
             col_up = col.upper()
             if 'NDDI' in col_up or 'HAN_HAN' in col_up:
-                df_all.rename(columns={col: 'Chi_So_Han_Han_NDDI'}, inplace=True)
+                col_mapping[col] = 'Chi_So_Han_Han_NDDI'
             elif 'DIEN_TICH' in col_up or 'NUOC' in col_up:
-                df_all.rename(columns={col: 'Dien_Tich_Nuoc_km2'}, inplace=True)
-            elif 'TINH' in col_up:
-                df_all.rename(columns={col: 'Tinh'}, inplace=True)
-            elif 'NAM' in col_up:
-                df_all.rename(columns={col: 'Nam'}, inplace=True)
-            elif 'THANG' in col_up:
-                df_all.rename(columns={col: 'Thang'}, inplace=True)
+                col_mapping[col] = 'Dien_Tich_Nuoc_km2'
+        
+        df_all.rename(columns=col_mapping, inplace=True)
         
         # Kiểm tra nếu cột NDDI không tồn tại
         if 'Chi_So_Han_Han_NDDI' not in df_all.columns:
@@ -167,17 +165,14 @@ def predict_future_ai(df_prov, start_year, end_year):
         cumulative_impact *= yearly_anomaly 
         
         for month in range(1, 13):
-            # Nếu tháng không có trong dữ liệu huấn luyện, dùng giá trị mặc định tránh lỗi
-            try:
-                base_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'mean')][month]
-                std_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'std')][month]
-                base_nddi = monthly_stats[('Chi_So_Han_Han_NDDI', 'mean')][month]
-            except KeyError:
-                base_area, std_area, base_nddi = hist_mean, hist_std, 0.0
-
+            base_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'mean')][month]
+            std_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'std')][month]
             noise = np.random.uniform(-0.02, 0.02)
             pred_area = base_area * cumulative_impact * (1 + noise)
+            
+            base_nddi = monthly_stats[('Chi_So_Han_Han_NDDI', 'mean')][month]
             pred_nddi = base_nddi * (2.0 - cumulative_impact) 
+            
             pred_z = (pred_area - hist_mean) / hist_std
             
             results.append({
@@ -264,10 +259,7 @@ def show_ai_forecast_dialog(tinh_name, df_full):
                 with col_chart:
                     fig = px.line(df_y, x='Thang_Str', y=topic['col'], markers=True, color_discrete_sequence=[topic['color']])
                     fig.update_layout(height=180, margin=dict(l=0, r=0, t=10, b=10), xaxis_title=None, yaxis_title=None)
-                    
-                    # SỬA LỖI TRÙNG LẶP ID: Cấp key duy nhất cho mỗi biểu đồ AI
-                    chart_key = f"ai_chart_{topic['col']}_{y}"
-                    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 # Cập nhật giá trị năm trước cho vòng lặp tiếp theo
                 prev_avg = avg_v
@@ -317,10 +309,7 @@ def show_bulletin_dialog(tinh_name, df_full):
             with c2:
                 fig = px.bar(df_y, x='Thang_Str', y=t['col'], color_discrete_sequence=[t['color']])
                 fig.update_layout(height=160, margin=dict(l=0, r=0, t=10, b=10))
-                
-                # SỬA LỖI TRÙNG LẶP ID: Cấp key duy nhất cho biểu đồ bản tin
-                chart_key = f"bulletin_chart_{t['col']}_{nam}"
-                st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                st.plotly_chart(fig, use_container_width=True)
             
             # Cập nhật giá trị năm trước cho vòng lặp tiếp theo
             prev_avg = avg_v
