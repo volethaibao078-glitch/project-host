@@ -67,17 +67,29 @@ def load_geojson():
 @st.cache_data(show_spinner=False)
 def load_data():
     try:
-        df_all = pd.read_csv('BaoCao_ToanQuoc_34Tinh_2020_2024.csv')
+        # Thêm encoding='utf-8-sig' để khử ký tự BOM ẩn trong file CSV
+        df_all = pd.read_csv('BaoCao_ToanQuoc_34Tinh_2020_2024.csv', encoding='utf-8-sig')
         
-        # Tự động xóa khoảng trắng ở đầu/cuối của tất cả các tên cột
-        df_all.columns = df_all.columns.str.strip()
+        # Xóa khoảng trắng và ký tự lạ (như ngoặc kép) ở tên cột
+        df_all.columns = df_all.columns.str.strip().str.replace('"', '').str.replace("'", "")
+        
+        # Đổi tên cột linh hoạt (tự động nhận diện chứa từ khóa NDDI hoặc Diện Tích Nước)
+        col_mapping = {}
+        for col in df_all.columns:
+            col_up = col.upper()
+            if 'NDDI' in col_up or 'HAN_HAN' in col_up:
+                col_mapping[col] = 'Chi_So_Han_Han_NDDI'
+            elif 'DIEN_TICH' in col_up or 'NUOC' in col_up:
+                col_mapping[col] = 'Dien_Tich_Nuoc_km2'
+        
+        df_all.rename(columns=col_mapping, inplace=True)
         
         # Kiểm tra nếu cột NDDI không tồn tại
         if 'Chi_So_Han_Han_NDDI' not in df_all.columns:
             st.warning("⚠️ Cảnh báo: Không tìm thấy cột 'Chi_So_Han_Han_NDDI' trong file CSV. Đang sử dụng giá trị mặc định (0).")
             df_all['Chi_So_Han_Han_NDDI'] = 0.0
 
-        # Kiểm tra nếu cột Dien_Tich_Nuoc_km2 bị sai tên
+        # Kiểm tra nếu cột Dien_Tich_Nuoc_km2 bị thiếu
         if 'Dien_Tich_Nuoc_km2' not in df_all.columns:
             st.error("❌ Lỗi nghiêm trọng: Không tìm thấy cột 'Dien_Tich_Nuoc_km2' trong file CSV!")
             return pd.DataFrame()
