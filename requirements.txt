@@ -6,4 +6,3 @@ streamlit-folium
 earthengine-api
 branca
 numpy
-openpyxl
