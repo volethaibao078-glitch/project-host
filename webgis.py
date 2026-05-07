@@ -162,7 +162,7 @@ def predict_future_ai(df_prov, start_year, end_year):
 # 3. CÁC CỬA SỔ DIALOG (BẢN TIN & AI)
 # ==========================================
 
-@st.dialog("🤖 HỆ THỐNG AI DỰ BÁO KHÍ HẬU", width="large")
+@st.dialog("🤖 HỆ THỐNG AI DỰ BÁO TĂNG & GIẢM MỰC NƯỚC", width="large")
 def show_ai_forecast_dialog(tinh_name, df_full):
     st.markdown(f"### 🔮 DỰ BÁO XU HƯỚNG TỚI 2030: {tinh_name.upper()}")
     st.divider()
