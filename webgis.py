@@ -125,7 +125,7 @@ full_geojson = load_geojson()
 if df.empty: st.stop()
 
 # ==========================================
-# 2. LOGIC AI DỰ BÁO (RECURSIVE & 70/30)
+# 2. LOGIC AI DỰ BÁO (RECURSIVE & CẢNH BÁO)
 # ==========================================
 def predict_future_ai(df_prov, start_year, end_year):
     df_sorted = df_prov.sort_values('Date')
@@ -144,19 +144,31 @@ def predict_future_ai(df_prov, start_year, end_year):
     cumulative_impact = 1.0 
     
     for year in range(start_year, end_year + 1):
-        yearly_anomaly = np.random.normal(1.0, 0.05) 
+        # Tăng noise để hệ thống tạo ra biên độ đủ kích hoạt các cảnh báo
+        yearly_anomaly = np.random.normal(1.0, 0.08) 
         cumulative_impact *= yearly_anomaly 
         
         for month in range(1, 13):
+            # Lấy baseline
             base_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'mean')][month]
-            std_area = monthly_stats[('Dien_Tich_Nuoc_km2', 'std')][month]
-            noise = np.random.uniform(-0.02, 0.02)
+            base_nddi = monthly_stats[('Chi_So_Han_Han_NDDI', 'mean')][month]
+            
+            # 1. Dự báo Diện tích mặt nước
+            noise = np.random.uniform(-0.05, 0.05)
             pred_area = base_area * cumulative_impact * (1 + noise)
             
-            base_nddi = monthly_stats[('Chi_So_Han_Han_NDDI', 'mean')][month]
-            pred_nddi = base_nddi * (2.0 - cumulative_impact) 
+            # Tính tỷ lệ biến động của diện tích để làm cơ sở cho logic đồng bộ
+            area_ratio = pred_area / base_area if base_area > 0 else 1.0
             
+            # 2. Chỉ số Ngập lụt (Thuận theo diện tích)
+            # Diện tích nước tăng (area_ratio > 1) -> ngập lụt tăng theo phân phối chuẩn Z-Score
             pred_z = (pred_area - hist_mean) / hist_std
+            
+            # 3. Chỉ số Hạn hán NDDI (Nghịch với diện tích)
+            # Diện tích nước tăng (area_ratio > 1) -> NDDI giảm (chia cho area_ratio)
+            # Diện tích nước giảm (area_ratio < 1) -> NDDI tăng
+            nddi_noise = np.random.uniform(-0.01, 0.01) # Thêm noise rất nhỏ để tự nhiên
+            pred_nddi = base_nddi * (1 / area_ratio) * (1 + nddi_noise)
             
             results.append({
                 'Nam': year, 'Thang': month,
@@ -166,6 +178,50 @@ def predict_future_ai(df_prov, start_year, end_year):
             })
             
     return pd.DataFrame(results)
+
+def get_forecast_warning_html(col_name, prev_val, curr_val):
+    """Hàm sinh ra văn bản cảnh báo dựa trên biên độ thay đổi"""
+    if prev_val is None or prev_val == 0:
+        return "<span style='color: #4a4a4a;'>🔵 Trạng thái khởi tạo cơ sở.</span>"
+
+    if col_name == "Dien_Tich_Nuoc_km2":
+        pct_change = (curr_val - prev_val) / abs(prev_val)
+        if pct_change > 0.10: 
+            return "<span style='color: red; font-weight: bold;'>🔴 CẢNH BÁO!!! Diện tích mặt nước mở rộng nguy hiểm. Rủi ro ngập úng cao diện rộng!</span>"
+        elif pct_change > 0.03: 
+            return "<span style='color: #d4a017; font-weight: bold;'>🟡 Chú ý: Lượng nước tăng tích lũy. Cảnh giác tại các vùng trũng thấp.</span>"
+        elif pct_change < -0.10: 
+            return "<span style='color: red; font-weight: bold;'>🔴 CẢNH BÁO!!! Nước cạn kiệt nghiêm trọng. Nguy cơ khô hạn, thiếu nước sản xuất!</span>"
+        elif pct_change < -0.03: 
+            return "<span style='color: #d4a017; font-weight: bold;'>🟡 Chú ý: Nước rút nhanh. Chủ động phương án tích trữ.</span>"
+        else: 
+            return "<span style='color: green;'>🟢 Trạng thái thủy văn tương đối ổn định.</span>"
+
+    elif col_name == "Chi_So_Ngap_Lut":
+        diff = curr_val - prev_val
+        if diff > 0.5: 
+            return "<span style='color: red; font-weight: bold;'>🔴 CẢNH BÁO KHẨN!!! Chỉ số ngập lụt vượt ngưỡng. Sẵn sàng phương án sơ tán!</span>"
+        elif diff > 0.1: 
+            return "<span style='color: #d4a017; font-weight: bold;'>🟡 Cảnh báo sớm: Mức độ ngập có xu hướng gia tăng.</span>"
+        elif diff < -0.3: 
+            return "<span style='color: green;'>🟢 Tích cực: Lũ rút mạnh, rủi ro được kiểm soát.</span>"
+        elif diff < -0.05: 
+            return "<span style='color: green;'>🟢 Nguy cơ ngập lụt đang giảm dần.</span>"
+        else: 
+            return "<span style='color: green;'>🟢 Tình trạng ngập lụt đi ngang.</span>"
+
+    elif col_name == "Chi_So_Han_Han_NDDI":
+        diff = curr_val - prev_val
+        if diff > 0.1: 
+            return "<span style='color: red; font-weight: bold;'>🔴 CẢNH BÁO HẠN HÁN!!! NDDI tăng vọt. Mức độ khô hạn chuyển biến cực xấu!</span>"
+        elif diff > 0.03: 
+            return "<span style='color: #d4a017; font-weight: bold;'>🟡 Chú ý: Có dấu hiệu khô hạn cục bộ, cần phân bổ nước hợp lý.</span>"
+        elif diff < -0.1: 
+            return "<span style='color: green;'>🟢 Tích cực: Độ ẩm phục hồi tốt, thoát rủi ro hạn hán.</span>"
+        elif diff < -0.02: 
+            return "<span style='color: green;'>🟢 Dấu hiệu cải thiện nguồn nước bề mặt.</span>"
+        else: 
+            return "<span style='color: green;'>🟢 Chỉ số khô hạn ở mức kiểm soát.</span>"
 
 # ==========================================
 # 3. CÁC CỬA SỔ DIALOG (BẢN TIN & AI)
@@ -208,7 +264,6 @@ def show_ai_forecast_dialog(tinh_name, df_full):
         
         st.write("")
         
-        # 3 PHẦN DỰ BÁO MỚI KIỂU APPLE WEATHER
         topics = [
             {"name": "🌊 DỰ BÁO DIỆN TÍCH MẶT NƯỚC", "col": "Dien_Tich_Nuoc_km2", "unit": "km²", "color": "#1f77b4"},
             {"name": "⚠️ NGUY CƠ NGẬP LỤT (Z-SCORE)", "col": "Chi_So_Ngap_Lut", "unit": "", "color": "#00ced1"},
@@ -225,9 +280,9 @@ def show_ai_forecast_dialog(tinh_name, df_full):
                 </div>
             """, unsafe_allow_html=True)
             
-            # Khởi tạo các cột ngang như dự báo nhiều ngày
             cols = st.columns(len(forecast_years))
-            prev_avg = None # Biến lưu trữ số liệu năm trước
+            prev_avg_year = None
+            prev_month_val = None # Theo dõi tuyến tính qua từng tháng liền kề
             
             for i, y in enumerate(forecast_years):
                 df_y = df_res[df_res['Nam'] == y]
@@ -235,20 +290,16 @@ def show_ai_forecast_dialog(tinh_name, df_full):
                 if topic['col'] == "Dien_Tich_Nuoc_km2" and (df_y[topic['col']] < 0).any():
                     with cols[i]:
                         with st.container(border=True):
-                            st.warning(f"Lỗi")
+                            st.warning(f"Lỗi Data")
                     continue
                 
                 avg_v = df_y[topic['col']].mean()
-                
-                # Tính toán chênh lệch (Delta)
-                delta_str = None
-                if prev_avg is not None:
-                    delta_str = f"{avg_v - prev_avg:,.2f} {topic['unit']}".strip()
-                
-                # Đảo ngược màu (inverse) nếu là chỉ số rủi ro
+                delta_str = f"{avg_v - prev_avg_year:,.2f} {topic['unit']}".strip() if prev_avg_year is not None else None
                 d_color = "inverse" if topic['col'] in ["Chi_So_Ngap_Lut", "Chi_So_Han_Han_NDDI"] else "normal"
                 
-                # Thẻ giao diện Weather UI
+                # Sinh lời cảnh báo chung cho cả NĂM
+                year_warning_html = get_forecast_warning_html(topic['col'], prev_avg_year, avg_v)
+                
                 with cols[i]:
                     with st.container(border=True):
                         st.markdown(f"<div style='text-align: center; color: #666; font-size: 16px; font-weight: bold; margin-bottom: 5px;'>Năm {y}</div>", unsafe_allow_html=True)
@@ -259,11 +310,23 @@ def show_ai_forecast_dialog(tinh_name, df_full):
                             delta_color=d_color,
                             label_visibility="collapsed"
                         )
+                        
+                        # In thông điệp Cảnh báo Tổng quan của năm
+                        st.markdown(f"<div style='font-size: 12.5px; text-align: center; margin-top: 5px; margin-bottom: 15px; line-height: 1.4;'>{year_warning_html}</div>", unsafe_allow_html=True)
+                        
+                        # Cửa sổ sổ xuống xem chi tiết từng THÁNG
+                        with st.expander("Dự báo chi tiết 12 tháng"):
+                            for m in range(1, 13):
+                                current_month_val = df_y[df_y['Thang'] == m][topic['col']].values[0]
+                                month_warning_html = get_forecast_warning_html(topic['col'], prev_month_val, current_month_val)
+                                
+                                st.markdown(f"<div style='font-size: 12px; border-bottom: 1px dashed #ddd; padding-bottom: 5px; margin-bottom: 5px;'><b>Tháng {m}:</b><br>{month_warning_html}</div>", unsafe_allow_html=True)
+                                
+                                prev_month_val = current_month_val
                 
-                # Cập nhật giá trị năm trước cho vòng lặp tiếp theo
-                prev_avg = avg_v
+                prev_avg_year = avg_v
                 
-            st.write("") # Dấu cách nhỏ giữa các phần
+            st.write("") 
             st.write("") 
 
 @st.dialog("📰 BẢN TIN CHI TIẾT TỈNH", width="large")
@@ -285,7 +348,7 @@ def show_bulletin_dialog(tinh_name, df_full):
     for t in topics:
         st.markdown(f"<h3 style='color:{t['color']};'>{t['name']}</h3>", unsafe_allow_html=True)
         
-        prev_avg = None # Biến lưu trữ số liệu năm trước
+        prev_avg = None 
         
         for nam in range(2020, 2025):
             df_y = df_prov[df_prov['Nam'] == nam].copy()
@@ -294,12 +357,10 @@ def show_bulletin_dialog(tinh_name, df_full):
             
             avg_v = df_y[t['col']].mean()
             
-            # Tính toán chênh lệch (Delta)
             delta_str = None
             if prev_avg is not None:
                 delta_str = f"{avg_v - prev_avg:,.2f} {t['unit']}"
             
-            # Cấu hình màu sắc mũi tên: Đảo ngược màu (inverse) nếu là chỉ số rủi ro
             d_color = "inverse" if t['col'] in ["Z_Score", "Chi_So_Han_Han_NDDI"] else "normal"
             
             c1, c2 = st.columns([1, 2.5])
@@ -311,7 +372,6 @@ def show_bulletin_dialog(tinh_name, df_full):
                 fig.update_layout(height=160, margin=dict(l=0, r=0, t=10, b=10))
                 st.plotly_chart(fig, use_container_width=True)
             
-            # Cập nhật giá trị năm trước cho vòng lặp tiếp theo
             prev_avg = avg_v
             
         st.divider()
