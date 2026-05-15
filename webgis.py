@@ -41,6 +41,15 @@ st.markdown("""
             box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
         }
         .stButton>button { border-radius: 8px; }
+        
+        /* Chỉnh UI cho Card giống Apple Weather */
+        [data-testid="stMetricValue"] {
+            font-size: 1.4rem !important;
+            text-align: center;
+        }
+        [data-testid="stMetricDelta"] {
+            justify-content: center;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -162,9 +171,9 @@ def predict_future_ai(df_prov, start_year, end_year):
 # 3. CÁC CỬA SỔ DIALOG (BẢN TIN & AI)
 # ==========================================
 
-@st.dialog("🤖 HỆ THỐNG AI DỰ BÁO TĂNG & GIẢM MỰC NƯỚC", width="large")
+@st.dialog("🤖 HỆ THỐNG AI DỰ BÁO BIẾN ĐỘNG TĂNG & GIẢM MỰC NƯỚC", width="large")
 def show_ai_forecast_dialog(tinh_name, df_full):
-    st.markdown(f"### 🔮 DỰ BÁO XU HƯỚNG TỚI 2030: {tinh_name.upper()}")
+    st.markdown(f"### 🔮 DỰ BÁO KHÔNG GIAN - THỜI GIAN TỚI 2030: {tinh_name.upper()}")
     st.divider()
     
     c_sel1, c_sel2 = st.columns([2, 1])
@@ -172,7 +181,7 @@ def show_ai_forecast_dialog(tinh_name, df_full):
         target_year = st.select_slider(
             "Chọn phạm vi dự báo (Dữ liệu đầu vào: 2020-2024)",
             options=[2025, 2026, 2027, 2028, 2029, 2030],
-            value=2026
+            value=2028
         )
     with c_sel2:
         st.write("")
@@ -194,26 +203,39 @@ def show_ai_forecast_dialog(tinh_name, df_full):
         df_prov = df_full[df_full['Tinh'] == tinh_name].copy()
         df_res = predict_future_ai(df_prov, 2025, target_year)
         
-        status_text.update(label="Hoàn tất! Đang trích xuất biểu đồ dự báo...", state="complete")
+        status_text.update(label="Hoàn tất! Đang trích xuất dữ liệu không gian thời gian...", state="complete")
         progress_bar.progress(100)
         
+        st.write("")
+        
+        # 3 PHẦN DỰ BÁO MỚI KIỂU APPLE WEATHER
         topics = [
             {"name": "🌊 DỰ BÁO DIỆN TÍCH MẶT NƯỚC", "col": "Dien_Tich_Nuoc_km2", "unit": "km²", "color": "#1f77b4"},
             {"name": "⚠️ NGUY CƠ NGẬP LỤT (Z-SCORE)", "col": "Chi_So_Ngap_Lut", "unit": "", "color": "#00ced1"},
             {"name": "🔥 NGUY CƠ HẠN HÁN (NDDI)", "col": "Chi_So_Han_Han_NDDI", "unit": "", "color": "#d62728"}
         ]
 
+        forecast_years = list(range(2025, target_year + 1))
+
         for topic in topics:
-            st.markdown(f"<h3 style='color:{topic['color']};'>{topic['name']}</h3>", unsafe_allow_html=True)
+            # Tiêu đề của từng khối
+            st.markdown(f"""
+                <div style='background-color: rgba(240, 242, 246, 0.5); padding: 10px 15px; border-left: 5px solid {topic['color']}; border-radius: 5px; margin-bottom: 15px;'>
+                    <h4 style='color:{topic['color']}; margin: 0;'>{topic['name']}</h4>
+                </div>
+            """, unsafe_allow_html=True)
             
+            # Khởi tạo các cột ngang như dự báo nhiều ngày
+            cols = st.columns(len(forecast_years))
             prev_avg = None # Biến lưu trữ số liệu năm trước
             
-            for y in range(2025, target_year + 1):
-                df_y = df_res[df_res['Nam'] == y].copy()
-                df_y['Thang_Str'] = "T" + df_y['Thang'].astype(str)
+            for i, y in enumerate(forecast_years):
+                df_y = df_res[df_res['Nam'] == y]
                 
                 if topic['col'] == "Dien_Tich_Nuoc_km2" and (df_y[topic['col']] < 0).any():
-                    st.warning(f"Năm {y}: Dữ liệu dự báo diện tích không khả thi (âm).")
+                    with cols[i]:
+                        with st.container(border=True):
+                            st.warning(f"Lỗi")
                     continue
                 
                 avg_v = df_y[topic['col']].mean()
@@ -221,24 +243,28 @@ def show_ai_forecast_dialog(tinh_name, df_full):
                 # Tính toán chênh lệch (Delta)
                 delta_str = None
                 if prev_avg is not None:
-                    delta_str = f"{avg_v - prev_avg:,.2f} {topic['unit']}"
+                    delta_str = f"{avg_v - prev_avg:,.2f} {topic['unit']}".strip()
                 
-                # Cấu hình màu sắc mũi tên: Đảo ngược màu (inverse) nếu là chỉ số rủi ro (Ngập lụt, Hạn hán)
+                # Đảo ngược màu (inverse) nếu là chỉ số rủi ro
                 d_color = "inverse" if topic['col'] in ["Chi_So_Ngap_Lut", "Chi_So_Han_Han_NDDI"] else "normal"
                 
-                col_info, col_chart = st.columns([1, 2.5])
-                with col_info:
-                    st.write(f"**Năm {y}**")
-                    st.metric("Trung bình dự kiến", f"{avg_v:,.2f} {topic['unit']}", delta=delta_str, delta_color=d_color)
-                with col_chart:
-                    fig = px.line(df_y, x='Thang_Str', y=topic['col'], markers=True, color_discrete_sequence=[topic['color']])
-                    fig.update_layout(height=180, margin=dict(l=0, r=0, t=10, b=10), xaxis_title=None, yaxis_title=None)
-                    st.plotly_chart(fig, use_container_width=True)
+                # Thẻ giao diện Weather UI
+                with cols[i]:
+                    with st.container(border=True):
+                        st.markdown(f"<div style='text-align: center; color: #666; font-size: 16px; font-weight: bold; margin-bottom: 5px;'>Năm {y}</div>", unsafe_allow_html=True)
+                        st.metric(
+                            label="Trung bình", 
+                            value=f"{avg_v:,.2f} {topic['unit']}".strip(), 
+                            delta=delta_str, 
+                            delta_color=d_color,
+                            label_visibility="collapsed"
+                        )
                 
                 # Cập nhật giá trị năm trước cho vòng lặp tiếp theo
                 prev_avg = avg_v
                 
-            st.divider()
+            st.write("") # Dấu cách nhỏ giữa các phần
+            st.write("") 
 
 @st.dialog("📰 BẢN TIN CHI TIẾT TỈNH", width="large")
 def show_bulletin_dialog(tinh_name, df_full):
